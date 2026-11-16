@@ -46,8 +46,11 @@ import time
 import httpx
 import yaml
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-PY = os.path.join(ROOT, ".venv", "bin", "python")
+ROOT = os.path.dirname(os.path.abspath(__file__))          # tests/ (this script's dir)
+# Ensure the config's `python3 mock_llm.py` model commands resolve to THIS python
+# (the venv/runner that has the deps), not a bare system python.
+os.environ["PATH"] = os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", "")
+PY = sys.executable
 MOCK = os.path.join(ROOT, "mock_llm.py")
 CFG = os.path.join(ROOT, "config.adopt.yaml")
 CFG_B = os.path.join(ROOT, "config.adopt_b.yaml")   # variant: default = the loaded model

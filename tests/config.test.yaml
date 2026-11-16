@@ -16,20 +16,20 @@ models:
     upstream_model: mock-a      # what gets sent to the backend
     context_length: 131072
     reasoning_effort: high
-    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18080 --model mock-a
+    command: python3 mock_llm.py --host 127.0.0.1 --port 18080 --model mock-a
 
   - name: embed-local
     upstream_model: mock-b
     context_length: 4096
     kind: embedding
-    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18081 --model mock-b
+    command: python3 mock_llm.py --host 127.0.0.1 --port 18081 --model mock-b
 
   - name: qwen-local-2          # 2nd chat model (mock-c :18082) for memory-safe switch tests
     upstream_model: mock-c
     context_length: 131072
-    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18082 --model mock-c
+    command: python3 mock_llm.py --host 127.0.0.1 --port 18082 --model mock-c
 
   - name: "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M"   # HF-style id with '/' and ':' -> tests safe_filename()
     upstream_model: mock-d
     context_length: 131072
-    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18083 --model mock-d
+    command: python3 mock_llm.py --host 127.0.0.1 --port 18083 --model mock-d

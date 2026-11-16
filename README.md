@@ -94,7 +94,7 @@ model_aliases:
 llm-router dashboard     # opens http://127.0.0.1:8799 in your browser
 ```
 
-> **Want to try it without real models?** `bash run_test.sh` boots the router against
+> **Want to try it without real models?** `bash tests/run_test.sh` boots the router against
 > fake backends on dedicated `18xxx` ports (never touching your real servers), runs the
 > full suite, and shuts down. See [Quick start (isolated, no real models)](#quick-start-isolated-no-real-models).
 
@@ -218,17 +218,22 @@ That's it — `llm-router` is now a global command that runs on the project's ow
 
 ## Quick start (isolated, no real models)
 
-Uses `mock_llm.py` (a fake OpenAI backend) on dedicated ports (18xxx) so it never
-touches your real splash/llama servers:
+All the tests live in `tests/` and use `mock_llm.py` (a fake OpenAI backend) on dedicated
+ports (18xxx) so they never touch your real splash/llama servers:
 
 ```bash
-bash run_test.sh                 # boots the test router, runs all 27 checks, shuts it down
-./test_stop_startup.sh           # regression: `stop` while the model is mid-startup
-./test_stop_watchers.sh          # regression: `stop` stops running `watch`/`watch --llm` tailers
+bash tests/run_test.sh           # boots the test router, runs all 27 checks, shuts it down
+bash tests/test_stop_startup.sh  # regression: `stop` while the model is mid-startup
+bash tests/test_stop_watchers.sh # regression: `stop` stops running `watch`/`watch --llm` tailers
 ```
 
-Or by hand: `llm-router run --config config.test.yaml` and then point an OpenAI client at
-`http://127.0.0.1:18787/v1`.
+Or by hand: `llm-router run --config tests/config.test.yaml` and then point an OpenAI client
+at `http://127.0.0.1:18787/v1`.
+
+> **CI:** the whole suite runs automatically in **GitHub Actions on every push** (and on PRs) —
+> see [.github/workflows/ci.yml](.github/workflows/ci.yml). It installs the package, runs all
+> backend suites plus the jsdom UI test on isolated ports, and fails if any `18xxx` test port
+> is left behind. No real models, no machine-specific paths.
 
 ## Running for real
 
@@ -519,19 +524,22 @@ llm-router/
     static/
       dashboard.html     # the dashboard frontend (self-contained: dark/light, 4 tabs, tooltips, pop-up, 5s auto-refresh)
     __main__.py          # CLI: run/serve/watch/stop/stop-model/switch/status/models/check/config/dashboard + markdown --help
-  mock_llm.py            # fake OpenAI backend for isolated testing (supports --delay, logs pg/tg timing at INFO)
   config.yaml            # REAL config (your splash/llama) — NOT committed; see config.example.yaml
-  config.test.yaml       # TEST config (mocks, isolated ports 18xxx)
-  config.adopt.yaml      # TEST config for the external-detection suite (mock, isolated port)
-  config.dash.yaml       # DASHBOARD TEST config (mocks, isolated ports 185xx)
-  test_suite.py          # end-to-end assertions (27 checks)
-  test_external_detect.py# test: router reads a model's real id from its /v1/models (20 checks)
-  dash_e2e.py            # dashboard backend end-to-end driver (isolated ports)
-  dash_ctrlc.py          # dashboard live Ctrl+C / SSE-shutdown driver
-  ui_test.js             # dashboard frontend jsdom test (110 checks; `npm install` then `node ui_test.js`)
-  test_stop_startup.sh   # regression: `stop` must stop a model that is still loading
-  test_stop_watchers.sh  # regression: `stop` stops running `watch`/`watch --llm` tailers
-  run_test.sh            # boot the test router + run the suite, isolated from real servers
+  tests/                 # ALL test code + fixtures (mock-only, isolated 18xxx ports; run in CI)
+    mock_llm.py            # fake OpenAI backend (supports --delay, logs pg/tg timing at INFO)
+    config.test.yaml       # TEST config (mocks, isolated ports 18xxx)
+    config.adopt.yaml      # TEST config for the external-detection suite (mock, isolated port)
+    config.dash.yaml       # DASHBOARD TEST config (mocks, isolated ports 185xx)
+    test_suite.py          # end-to-end assertions (27 checks)
+    test_external_detect.py# test: router reads a model's real id from its /v1/models (20 checks)
+    dash_e2e.py            # dashboard backend end-to-end driver (isolated ports)
+    dash_ctrlc.py          # dashboard live Ctrl+C / SSE-shutdown driver
+    ui_test.js             # dashboard frontend jsdom test (111 checks; `npm ci` then `node tests/ui_test.js`)
+    test_stop_startup.sh   # regression: `stop` must stop a model that is still loading
+    test_stop_watchers.sh  # regression: `stop` stops running `watch`/`watch --llm` tailers
+    run_test.sh            # boot the test router + run the suite, isolated from real servers
+  .github/workflows/     # CI: runs the whole tests/ suite on every push + PR
+    ci.yml                 #   backend (python 3.11/3.12) + UI (jsdom, node 20/22) jobs
   llm-router.plist       # optional launchd auto-start template (not committed — has machine paths)
   .gitignore             # ignores .venv/, __pycache__/, *.egg-info/, logs/, real config.yaml, etc.
   .venv/                 # isolated venv (uv, Python 3.11) — not committed
@@ -539,7 +547,7 @@ llm-router/
 
 ## How this was validated
 
-`test_suite.py` runs against `config.test.yaml` — mock backends on **18080/18081/18082/18083**,
+`tests/test_suite.py` runs against `tests/config.test.yaml` — mock backends on **18080/18081/18082/18083**,
 router on **18787** — **isolated from the real `:8080`/`:8081` servers**, which are only probed
 read-only and never started or stopped by the tests. It asserts **27 checks**, including:
 
@@ -557,24 +565,24 @@ read-only and never started or stopped by the tests. It asserts **27 checks**, i
 - streaming (SSE passthrough) and the base-url-without-`/v1` path normalization.
 - graceful shutdown (via `llm-router stop`) stops the active model.
 
-`test_stop_startup.sh` is a standalone regression for the "stop while loading" case: it starts a
+`tests/test_stop_startup.sh` is a standalone regression for the "stop while loading" case: it starts a
 router whose default model has a long load (`mock_llm.py --delay`), calls `llm-router stop` while
 the model is still in its startup window, and asserts the model process is gone. (This was
 verified by A/B: with the old shutdown path — `except Exception`, which does not catch
 `asyncio.CancelledError`, a `BaseException` — the mid-startup model was orphaned; with the fix
 — catching `CancelledError` so `mgr.shutdown()` always runs — it is always stopped.)
 
-`test_stop_watchers.sh` is a standalone regression for watcher cleanup: it boots a router, starts
+`tests/test_stop_watchers.sh` is a standalone regression for watcher cleanup: it boots a router, starts
 a `watch` and a `watch --llm` in the background (other-terminal style), calls `llm-router stop`, and
 asserts **both** watcher processes are gone — not just the router and its model.
 
-`run_test.sh` boots the test router, runs the 27-check suite, and shuts it down
+`tests/run_test.sh` boots the test router, runs the 27-check suite, and shuts it down
 (`RESULT: PASS (27/27)`). The `llm-router` executable runs **from any working directory**:
 `run` returns immediately as a background daemon, `watch` / `watch --llm` follow the right log
 (Ctrl+C stops the watcher only), and `stop` stops the router + its model + any watch tailers.
 
 The **web dashboard** is validated three ways, all isolated on 18xxx/185xx ports (never the real
-`8080`/`8081` servers). All three drivers ship in the repo root and are path-portable (they
+`8080`/`8081` servers). All three drivers live in `tests/` and are path-portable (they
 resolve `dashboard.html` and `config.dash.yaml` relative to themselves):
 
 - a **backend end-to-end driver** (`dash_e2e.py`) boots mock backends + a router + the
@@ -594,9 +602,16 @@ resolve `dashboard.html` and `config.dash.yaml` relative to themselves):
   PUT body), the **Watch / Stop-watching** log toggle, **5-second auto-refresh** (polls every
   5s, never 2s), the **"No default instance" pop-up** (shown only when nothing is running,
   dismissed + slides up after any instance starts), and the **"Opened with config:"** header —
-  **110 checks**. (Run it with `npm install && node ui_test.js` — jsdom is the only dependency.)
+  **111 checks**. (Run it with `npm ci && node tests/ui_test.js` — jsdom is the only dependency.)
 - a **live Ctrl+C test** (`dash_ctrlc.py`) starts a router + the dashboard, holds the
   dashboard's `/api/logs/stream` (the Logs watch) open and polls, then sends SIGINT and
   asserts the dashboard exits within a second — proving Ctrl+C stops it immediately even
   while the browser page is streaming (uvicorn's graceful-shutdown timeout is `0`, so it
   drops the in-flight requests and the SSE stream instead of waiting).
+
+> **CI (GitHub Actions, every push + PR):** all of the above runs in
+> [.github/workflows/ci.yml](.github/workflows/ci.yml) — a **backend** job (python 3.11 + 3.12)
+> that installs the package and runs `run_test.sh`, `test_external_detect.py`, `dash_e2e.py`,
+> `dash_ctrlc.py`, `test_stop_startup.sh`, and `test_stop_watchers.sh`, plus a **UI** job
+> (node 20 + 22) that runs `ui_test.js`. Both use isolated `18xxx` ports and temp state, and the
+> backend job fails if any test port survives the run.

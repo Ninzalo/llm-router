@@ -7,15 +7,17 @@ Isolated ports only (18xxx). Never touches the real :8080/:8081 servers.
 import os, sys, time, signal, subprocess, threading, json
 import httpx
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-PY = f"{ROOT}/.venv/bin/python"
-LLMROUTER = f"{ROOT}/.venv/bin/llm-router"
+ROOT = os.path.dirname(os.path.abspath(__file__))          # tests/ (this script's dir)
+PY = sys.executable
+LLMROUTER = os.path.join(os.path.dirname(sys.executable), "llm-router")
 CFG = f"{ROOT}/config.dash.yaml"
 DASH_PORT = 18910
 ROUTER_PORT = 18590
 MOCK_PORTS = {18501: "mock-a", 18502: "mock-b", 18503: "mock-c"}
 STATE = "/tmp/dash_ctrlc_state"
 MAX_SHUTDOWN_S = 5.0
+# Ensure the config's `python3 mock_llm.py` model commands resolve to THIS python.
+os.environ["PATH"] = os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", "")
 
 procs = []
 def spawn(argv, **kw):

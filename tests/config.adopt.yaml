@@ -27,9 +27,9 @@ models:
   - name: qwen-q4km
     upstream_model: qwen-q4km
     context_length: 131072
-    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18095 --model qwen-q4km
+    command: python3 mock_llm.py --host 127.0.0.1 --port 18095 --model qwen-q4km
 
   - name: qwen-q4kxl
     upstream_model: qwen-q4kxl
     context_length: 131072
-    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18095 --model qwen-q4kxl
+    command: python3 mock_llm.py --host 127.0.0.1 --port 18095 --model qwen-q4kxl

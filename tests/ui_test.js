@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
-const HTML = fs.readFileSync(path.join(__dirname, "llm_router", "static", "dashboard.html"), "utf-8");
+const HTML = fs.readFileSync(path.join(__dirname, "..", "llm_router", "static", "dashboard.html"), "utf-8");
 
 let failures = 0, passes = 0;
 function check(name, cond) {

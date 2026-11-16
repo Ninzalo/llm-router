@@ -2,8 +2,15 @@
 # Boot the ISOLATED test router (mocks on 18xxx; never touches real :8080/:8081)
 # using the daemon `llm-router run`, run the full 27-check suite, then stop it.
 set -u
-cd "$(dirname "$0")"
-PY=./.venv/bin/python
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"      # repo root (tests/..)
+cd "$SCRIPT_DIR"
+# Interpreter: prefer the repo venv, else a system python3. Prepend its bin dir
+# to PATH so the config's `python3 mock_llm.py` model commands use the same
+# interpreter (the one that has fastapi/uvicorn).
+PY="$ROOT/.venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3)"
+export PATH="$(dirname "$PY"):$PATH"
 PORT=18787
 DLOG="$HOME/.config/llm-router/router-$PORT.log"
 

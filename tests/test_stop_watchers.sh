@@ -9,8 +9,12 @@
 # `llm-router stop`, and asserts BOTH watcher processes are gone.
 # Exit 0 = pass, 1 = a watcher (or the router) survived, 2 = env problem.
 set -u
-cd "$(dirname "$0")"
-PY="$(pwd)/.venv/bin/python"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"      # repo root (tests/..)
+cd "$SCRIPT_DIR"
+PY="$ROOT/.venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3)"
+export PATH="$(dirname "$PY"):$PATH"      # so bare `llm-router` + `python3` resolve
 
 WORK="$(mktemp -d /tmp/llm-stop-watchers.XXXXXX)"
 CFG="$WORK/config.yaml"

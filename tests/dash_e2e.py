@@ -1,12 +1,28 @@
 #!/usr/bin/env python
 """End-to-end test for the llm-router web dashboard. Isolated ports (18xxx),
 isolated state dir, mock backends. Never touches the real servers."""
-import json, os, subprocess, sys, time, urllib.request, urllib.error, shutil
+import json, os, subprocess, sys, time, tempfile, urllib.request, urllib.error, shutil
 import yaml
 
-REPO = os.path.dirname(os.path.abspath(__file__))
+# Ensure the config's `python3 mock_llm.py` model commands resolve to THIS python
+# (the venv/runner that has the deps), not a bare system python. Must run before
+# ENV is copied below.
+os.environ["PATH"] = os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", "")
+
+REPO = os.path.dirname(os.path.abspath(__file__))   # tests/ (this script's dir)
 PY = sys.executable
-CFG = os.path.join(REPO, "config.dash.yaml")
+MOCK = os.path.join(REPO, "mock_llm.py")
+# Render config.dash.yaml with an ABSOLUTE mock path: the dashboard's run-instance
+# flow copies the model list into a per-instance config in the state dir, where a
+# relative `mock_llm.py` would not resolve. Real user configs use absolute model
+# commands, so mirror that here.
+_cfg_src = os.path.join(REPO, "config.dash.yaml")
+_cfg_dir = tempfile.mkdtemp(prefix="llmrouter_dash_cfg_")
+CFG = os.path.realpath(os.path.join(_cfg_dir, "config.dash.yaml"))
+with open(_cfg_src, encoding="utf-8") as _f:
+    _cfg_text = _f.read()
+with open(CFG, "w", encoding="utf-8") as _f:
+    _f.write(_cfg_text.replace("python3 mock_llm.py", "python3 " + MOCK))
 STATE = "/tmp/dash_test_state"
 LOGDIR = "/tmp/dash_test_logs"
 ROUTER1 = 18590

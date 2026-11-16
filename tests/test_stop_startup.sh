@@ -9,8 +9,12 @@
 # (--delay), calls `stop` while the model is still loading, and asserts the
 # model process is gone. Exit 0 = pass, 1 = orphaned, 2 = env problem.
 set -u
-cd "$(dirname "$0")"
-PY="$(pwd)/.venv/bin/python"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"      # repo root (tests/..)
+cd "$SCRIPT_DIR"
+PY="$ROOT/.venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3)"
+export PATH="$(dirname "$PY"):$PATH"      # so bare `llm-router` + `python3` resolve
 
 WORK="$(mktemp -d /tmp/llm-stop-startup.XXXXXX)"
 CFG="$WORK/config.yaml"

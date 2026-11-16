@@ -21,15 +21,15 @@ models:
     upstream_model: mock-a
     context_length: 131072
     reasoning_effort: high
-    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18501 --model mock-a
+    command: python3 mock_llm.py --host 127.0.0.1 --port 18501 --model mock-a
 
   - name: qwen-second              # backend :18503 — used by the dashboard "run instance" (no port clash)
     upstream_model: mock-c
     context_length: 131072
-    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18503 --model mock-c
+    command: python3 mock_llm.py --host 127.0.0.1 --port 18503 --model mock-c
 
   - name: embed-local              # embedding; managed but never a chat model (mock-b :18502)
     upstream_model: mock-b
     context_length: 4096
     kind: embedding
-    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18502 --model mock-b
+    command: python3 mock_llm.py --host 127.0.0.1 --port 18502 --model mock-b
