@@ -1,6 +1,6 @@
 {
   "name": "llm-router",
-  1.0.4,
+  "version": "1.0.4",
   "private": true,
   "description": "Node-side test helper for the llm-router web dashboard (jsdom). The Python package is defined in pyproject.toml; this only provides the `test:ui` script and its jsdom dependency.",
   "scripts": {
