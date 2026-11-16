@@ -1,0 +1,35 @@
+# TEST config — shared-port external model-detection validation.
+#
+# Two models share ONE backend port (:18095). A mock backend is started
+# EXTERNALLY (by test_external_detect.py, before the router starts) on that
+# port serving 'qwen-q4km'. The router must attribute the external/running/
+# active state to the model that is ACTUALLY loaded there (qwen-q4km), not to
+# whichever configured model happens to share the port.
+#
+# default_model is qwen-q4kxl — the model that is NOT loaded externally. This is
+# exactly the reported bug: the dashboard showed qwen-q4kxl as the active
+# external model when qwen-q4km is what was really loaded on the shared port.
+#
+# Isolated 18xxx ports only — never touches the real splash (:8080) / llama
+# (:8081) servers.
+router:
+  host: 127.0.0.1
+  port: 18795
+  api_key: ""
+  default_model: qwen-q4kxl
+  startup_timeout: 30
+  health_interval: 0.2
+  log_dir: ./logs
+  keep_inactive_stopped: true
+  preload: true
+
+models:
+  - name: qwen-q4km
+    upstream_model: qwen-q4km
+    context_length: 131072
+    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18095 --model qwen-q4km
+
+  - name: qwen-q4kxl
+    upstream_model: qwen-q4kxl
+    context_length: 131072
+    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18095 --model qwen-q4kxl

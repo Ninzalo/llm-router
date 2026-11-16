@@ -1,0 +1,37 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# --- virtualenv ---
+.venv/
+venv/
+env/
+
+# --- llm-router runtime artifacts ---
+logs/
+*.log
+*.log.*
+
+# --- local config (your real setup); the repo ships config.example.yaml ---
+config.yaml
+config.yaml.bak
+config.adopt_b.yaml
+config.servecheck.yaml
+*.bak
+
+# --- user-specific launchd install (machine paths baked in) ---
+llm-router.plist
+
+# --- local hermes wiring snippet (references your base_url / model names) ---
+hermes.model_aliases.yaml
+
+# --- Node (UI-test dependency) ---
+node_modules/
+
+# --- OS / editor noise ---
+.DS_Store
+.xc_write_probe

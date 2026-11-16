@@ -1,0 +1,47 @@
+# llm-router configuration — EXAMPLE TEMPLATE
+#
+# Start from this file, then edit it for your own models:
+#
+#     cp config.example.yaml config.yaml
+#     llm-router config          # opens config.yaml in your $EDITOR
+#     llm-router check           # validate (nothing is started)
+#
+# The config is auto-resolved in this order, so once you have a config.yaml,
+# `llm-router` works from ANY working directory:
+#
+#     $LLM_ROUTER_CONFIG  >  ~/.config/llm-router/config.yaml  >  <repo>/config.yaml
+
+router:
+  host: 127.0.0.1
+  port: 8787                 # the router's public port — point hermes at http://127.0.0.1:8787/v1
+  api_key: null              # set a non-empty string to require a Bearer token on /v1
+  default_model: my-chat     # model loaded on boot (a `name` in `models:` below)
+  startup_timeout: 120       # seconds to wait for the default model to become ready
+  health_interval: 1         # seconds between readiness probes to the model backend
+  log_dir: ./logs            # where per-instance / per-model logs are written
+  keep_inactive_stopped: true
+  preload: true              # start the default model on boot (in the background)
+
+models:
+  - name: my-chat            # the name hermes sees in its /model picker
+    upstream_model: my-chat  # the model id the backend actually wants (rewritten per request)
+    context_length: 64000    # advertised to hermes (hermes needs at least 64000 to accept a model)
+    reasoning_effort: medium # advertised + injected into the request when the client omits it
+    kind: chat
+    # The command that starts THIS model's backend (it must serve an OpenAI-compatible /v1).
+    # Example for a local splash server:
+    command: splash serve --model my-model --host 0.0.0.0 --port 8080 --max-context 64000 --idle-release 1800
+    env: {}                  # extra KEY=VALUE environment variables for the backend process
+
+  # An embedding model (optional). It is hidden from hermes's /model picker but is
+  # still routable by the router via its name.
+  # - name: my-embed
+  #   upstream_model: my-embed
+  #   context_length: 8192
+  #   kind: embedding
+  #   command: splash serve --model my-embed --host 0.0.0.0 --port 8081 --idle-release 1800
+
+dashboard:                   # defaults for `llm-router dashboard` (also editable in the UI)
+  host: 127.0.0.1
+  port: 8799
+  browser: true              # auto-open the browser on start (override per run: --no-browser)

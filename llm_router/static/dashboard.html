@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llm-router dashboard</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#ffffff; --fg:#1a1d23; --muted:#6b7280; --line:#e2e5ea;
+    --accent:#2563eb; --accent-fg:#fff; --good:#16a34a; --warn:#d97706; --bad:#dc2626;
+    --chip:#eef1f6; --num:#0f172a; --tipbg:#111827; --tipfg:#f9fafb; --code:#f1f3f7;
+  }
+  [data-theme="dark"]{
+    --bg:#0e1116; --card:#161b22; --fg:#e6edf3; --muted:#8b949e; --line:#2b313b;
+    --accent:#3b82f6; --accent-fg:#fff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+    --chip:#21262d; --num:#e6edf3; --tipbg:#f0f3f7; --tipfg:#111827; --code:#0d1117;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  header{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:10}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  header .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  main{padding:20px 22px;max-width:1180px;margin:0 auto}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px}
+  .tabs button{background:none;border:none;color:var(--muted);padding:9px 16px;font-size:14px;cursor:pointer;border-bottom:2px solid transparent}
+  .tabs button.active{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
+  .tab{display:none}
+  .tab.active{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  .card h2{margin:0 0 4px;font-size:15px}
+  .card .meta{color:var(--muted);font-size:12px;margin-bottom:12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .metric{background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .metric .k{color:var(--muted);font-size:11px;display:flex;align-items:center;gap:4px}
+  .metric .v{font-size:19px;font-weight:650;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:3px}
+  .metric .u{font-size:11px;color:var(--muted);font-weight:400}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  td.num{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .dim{color:var(--muted)}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px}
+  .badge .dot{width:7px;height:7px;border-radius:50%}
+  .badge.active{background:rgba(22,163,74,.15);color:var(--good)} .badge.active .dot{background:var(--good)}
+  .badge.running{background:rgba(59,130,246,.15);color:var(--accent)} .badge.running .dot{background:var(--accent)}
+  .badge.stopped{background:var(--chip);color:var(--muted)} .badge.stopped .dot{background:var(--muted)}
+  .badge.kind{background:var(--chip);color:var(--muted);font-weight:500}
+  button.btn{background:var(--accent);color:var(--accent-fg);border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  button.btn:hover{filter:brightness(1.05)}
+  button.btn:disabled{opacity:.5;cursor:not-allowed}
+  button.btn.ghost{background:var(--chip);color:var(--fg)}
+  button.btn.danger{background:transparent;color:var(--bad);border:1px solid var(--bad)}
+  button.btn.sm{padding:5px 10px;font-size:12px}
+  .banner{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;margin-bottom:16px;background:var(--card)}
+  .banner.run{border-color:var(--good)}
+  .banner.stop{border-color:var(--warn)}
+  #noInstPop{position:fixed;top:22px;left:50%;transform:translate(-50%,-18px);opacity:0;pointer-events:none;z-index:1000;transition:transform .38s cubic-bezier(.2,.7,.3,1),opacity .38s ease;will-change:transform,opacity}
+  #noInstPop.on{transform:translate(-50%,0);opacity:1;pointer-events:auto}
+  #noInstPop.gone{transform:translate(-50%,-72px);opacity:0;pointer-events:none}
+  #noInstPop .pop-inner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--card);color:var(--fg);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:12px;padding:14px 18px;box-shadow:0 14px 44px rgba(0,0,0,.28);max-width:min(640px,calc(100vw - 32px))}
+  .tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--muted);color:#fff;font-size:10px;font-weight:700;cursor:help;vertical-align:middle;margin-left:5px;line-height:1;flex:none}
+  [data-theme="dark"] .tip{color:var(--bg)}
+  .tipbox{display:none;position:fixed;max-width:280px;background:var(--tipbg);color:var(--tipfg);padding:8px 11px;border-radius:8px;font-size:12.5px;line-height:1.45;z-index:100;box-shadow:0 6px 22px rgba(0,0,0,.4);pointer-events:none}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  label.field{display:block;font-size:12px;color:var(--muted);margin-bottom:2px}
+  input,select,textarea{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:7px 9px;font-size:13px;font-family:inherit}
+  textarea{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;resize:vertical}
+  input[type=checkbox]{-webkit-appearance:none;appearance:none;width:42px;height:24px;border-radius:12px;flex:none;background:#ff453a;position:relative;cursor:pointer;border:none;padding:0;margin:0;vertical-align:middle;transition:background .18s ease;outline:none}
+  input[type=checkbox]::before{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform .18s ease}
+  input[type=checkbox]:checked{background:#34c759}
+  input[type=checkbox]:checked::before{transform:translateX(18px)}
+  input[type=checkbox]:focus-visible{box-shadow:0 0 0 3px rgba(52,199,89,.45)}
+  .fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+  .model-card{border:1px solid var(--line);border-radius:9px;padding:12px;margin-bottom:12px;background:var(--bg)}
+  .model-card h3{margin:0 0 10px;font-size:13px;display:flex;align-items:center;gap:8px}
+  .empty{color:var(--muted);padding:24px;text-align:center}
+  .status{font-size:13px;padding:9px 12px;border-radius:8px;margin-top:10px;display:none}
+  .status.ok{display:block;background:rgba(22,163,74,.15);color:var(--good)}
+  .status.err{display:block;background:rgba(220,38,38,.15);color:var(--bad)}
+  .logs-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+  .log-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+  .log-item .lbl{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;flex:1}
+  .log-item .kind{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--chip);padding:2px 7px;border-radius:12px}
+  .viewer{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;max-height:52vh;overflow:auto;white-space:pre-wrap;word-break:break-word;display:none}
+  .viewer.on{display:block}
+  .viewer .hd{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-family:inherit}
+  .hint{color:var(--muted);font-size:12px}
+  code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:12px}
+  .mode-toggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .mode-toggle button{background:var(--bg);color:var(--muted);border:none;padding:7px 14px;font-size:13px;cursor:pointer}
+  .mode-toggle button.active{background:var(--accent);color:var(--accent-fg)}
+  .switch{display:inline-flex;align-items:center;gap:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>llm-router <span class="sub" id="ver"></span></h1>
+  <span class="sub" id="cfgpath"></span>
+  <span class="spacer"></span>
+  <button class="btn ghost sm" id="themeBtn">☾</button>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="active" data-tab="overview">Overview</button>
+    <button data-tab="run">Run Instance</button>
+    <button data-tab="config">Config</button>
+    <button data-tab="logs">Logs</button>
+  </div>
+
+  <!-- ============================== OVERVIEW ============================== -->
+  <section class="tab active" id="tab-overview">
+    <div class="banner stop" id="banner"></div>
+    <div class="card">
+      <h2>Running instances <span class="tip" data-tip="Every router instance currently running on this machine, discovered from the router-<port>.pid pidfiles plus a scan of the process list. Refreshes every 5 seconds.">?</span></h2>
+      <div class="meta">Auto-refreshing every 5s</div>
+      <div id="instances"></div>
+      <div class="status" id="ovStatus"></div>
+    </div>
+  </section>
+
+  <!-- ============================== RUN ============================== -->
+  <section class="tab" id="tab-run">
+    <div class="card">
+      <h2>Run a new instance <span class="tip" data-tip="Launch a NEW router instance on a fresh port. It reuses LLMs that are already configured in the default config — pick which ones to include and which is the default/active one. The default config itself is not modified.">?</span></h2>
+      <div class="meta">The instance gets its own generated config under the state dir; the default config is left untouched.</div>
+      <div class="fgrid" id="runForm"></div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="runBtn">▶ Run instance</button>
+        <span class="hint" id="runHint"></span>
+      </div>
+      <div class="status" id="runStatus"></div>
+    </div>
+  </section>
+
+  <!-- ============================== CONFIG ============================== -->
+  <section class="tab" id="tab-config">
+    <div class="card">
+      <h2>Default config <span class="tip" data-tip="The config file used by `llm-router run` (auto-resolved: $LLM_ROUTER_CONFIG > ~/.config/llm-router/config.yaml > the repo config.yaml). Editing it changes what future `run` commands start.">?</span></h2>
+      <div class="meta" id="cfgMeta"></div>
+      <div class="row" style="margin-bottom:16px">
+        <div class="mode-toggle">
+          <button class="active" data-mode="structured">Structured</button>
+          <button data-mode="raw">Raw YAML</button>
+        </div>
+        <span class="tip" data-tip="Structured = a full form for every router and model field (the recommended way). Raw YAML = edit the .yaml text directly. Both validate before saving and keep a .bak backup.">?</span>
+        <span class="spacer"></span>
+        <span class="hint" id="cfgValid"></span>
+      </div>
+
+      <div id="cfgStructured">
+        <div class="card" style="background:var(--bg)">
+          <h2>Router</h2>
+          <div class="fgrid" id="routerForm"></div>
+        </div>
+        <div class="card" style="background:var(--bg);margin-top:10px">
+          <h2>Dashboard</h2>
+          <div class="meta" style="margin-bottom:8px">Defaults for <code>llm-router dashboard</code> — where it binds and whether it auto-opens the browser. CLI flags (<code>--host</code>/<code>--port</code>/<code>--no-browser</code>) override these per run; a changed port takes effect the next time the dashboard starts.</div>
+          <div class="fgrid" id="dashboardForm"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin:8px 0 14px">
+          <h2 style="margin:0">Models</h2>
+          <span class="tip" data-tip="The preconfigured LLM backends. The router keeps exactly one of these active at a time and forwards /v1 requests to it.">?</span>
+          <button class="btn ghost sm" id="addModelBtn">+ Add model</button>
+        </div>
+        <div id="modelsForm"></div>
+      </div>
+
+      <div id="cfgRaw" style="display:none">
+        <label class="field">config.yaml (raw) <span class="tip" data-tip="Edit the config as raw YAML text. Comments are preserved (the structured form cannot keep them). Saved to the same default config path.">?</span></label>
+        <textarea id="rawYaml" rows="24"></textarea>
+      </div>
+
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="saveCfgBtn">Save config</button>
+        <span class="hint">Validating before every save — an invalid config is never written.</span>
+      </div>
+      <div class="status" id="cfgStatus"></div>
+    </div>
+  </section>
+
+  <!-- ============================== LOGS ============================== -->
+  <section class="tab" id="tab-logs">
+    <div class="card">
+      <h2>Logs <span class="tip" data-tip="Live logs for every running instance: the router's own log, and each running LLM's log. Pick one and click Watch to stream it (new lines append automatically).">?</span></h2>
+      <div class="meta">Router logs live in the state dir; LLM logs live in the config's log_dir.</div>
+      <button class="btn ghost sm" id="refreshLogsBtn" style="margin-bottom:12px">↻ Refresh</button>
+      <div class="logs-list" id="logsList"></div>
+      <div class="viewer" id="viewer"></div>
+    </div>
+  </section>
+</main>
+
+<!-- Floating "no instances running" pop-up: drops in when nothing is running,
+     slides from the bottom to the top (and fades) when any instance starts. -->
+<div id="noInstPop" role="status" aria-live="polite" aria-hidden="true">
+  <div class="pop-inner" id="noInstPopInner"></div>
+</div>
+
+<script>
+"use strict";
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+let pollTimer = null;
+let watching = null; // {url, ctrl}
+let watchedLogId = null;
+function tipSpan(t){ return t ? ` <span class="tip" tabindex="0" data-tip="${t}">?</span>` : ''; }
+
+/* ------------------------------- theme ------------------------------- */
+function applyTheme(t){ document.documentElement.setAttribute('data-theme', t); try{localStorage.setItem('lr-theme', t);}catch(e){}
+  $('#themeBtn').firstChild.textContent = (t==='dark' ? '☀ ' : '☾ '); }
+function initTheme(){ let t=null; try{t=localStorage.getItem('lr-theme');}catch(e){}
+  if(!t) t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  applyTheme(t); }
+$('#themeBtn').addEventListener('click', ()=>{ const cur=document.documentElement.getAttribute('data-theme'); applyTheme(cur==='dark'?'light':'dark'); });
+
+/* ------------------------------ tooltips ------------------------------ */
+(function(){
+  const box = document.createElement('div'); box.className='tipbox'; document.body.appendChild(box);
+  function show(el){ const t=el.getAttribute('data-tip'); if(!t) return; box.textContent=t; box.style.display='block';
+    const r=el.getBoundingClientRect(), tw=box.offsetWidth, th=box.offsetHeight;
+    let left=Math.max(8, Math.min(r.left + r.width/2 - tw/2, window.innerWidth - tw - 8));
+    let top=r.bottom + 8; if(top + th > window.innerHeight - 8) top = r.top - th - 8;
+    box.style.left=left+'px'; box.style.top=Math.max(8,top)+'px'; }
+  function hide(){ box.style.display='none'; }
+  // Delegate on document: the Config forms (router/dashboard/model cards) are built AFTER this
+  // runs, so binding only to the .tip spans that exist at load time misses them (they never get
+  // handlers and their tooltips don't show). Delegation catches every .tip — present or added
+  // later — on hover and on keyboard focus.
+  const tipOf=e=> (e.target && e.target.closest ? e.target.closest('.tip') : null);
+  document.addEventListener('mouseover', e=>{ const t=tipOf(e); if(t) show(t); });
+  document.addEventListener('mouseout',  e=>{ if(tipOf(e)) hide(); });
+  document.addEventListener('focusin',   e=>{ const t=tipOf(e); if(t) show(t); });
+  document.addEventListener('focusout',  e=>{ if(tipOf(e)) hide(); });
+  $$('.tip').forEach(el=>{ el.tabIndex=0; });   // keep pre-existing (static) tips keyboard-focusable
+})();
+
+/* -------------------------------- tabs -------------------------------- */
+$$('.tabs button').forEach(b=>b.addEventListener('click',()=>{
+  $$('.tabs button').forEach(x=>x.classList.remove('active')); b.classList.add('active');
+  $$('.tab').forEach(t=>t.classList.remove('active')); $('#tab-'+b.dataset.tab).classList.add('active');
+  if(b.dataset.tab==='logs') refreshLogs();
+  if(b.dataset.tab==='overview') refreshOverview();
+}));
+
+/* ------------------------------ helpers ------------------------------ */
+function fmt(v){ return (v==null)? '<span class="dim">—</span>' : (Number(v).toFixed(2)+' <span class="u">tok/s</span>'); }
+async function jget(u){ const r=await fetch(u); if(!r.ok) throw new Error(u+' -> '+r.status); return r.json(); }
+async function jsend(u, body, method){ const r=await fetch(u,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); return r.json(); }
+function showStatus(el, ok, msg){ el.className='status '+(ok?'ok':'err'); el.textContent=msg; }
+
+/* ------------------------------ overview ------------------------------ */
+function metricBlock(prefix, r){
+  const m=(k,label)=>`<div class="metric"><div class="k">${label}</div><div class="v">${fmt(r&&r[k])}</div></div>`;
+  return `<div class="grid" style="margin-bottom:6px">
+    ${m(prefix+'_pg_current','Current prompt')}
+    ${m(prefix+'_tg_current','Current gen')}
+    ${m(prefix+'_pg_avg','Avg prompt')}
+    ${m(prefix+'_tg_avg','Avg gen')}
+  </div>`;
+}
+function statusBadge(m){
+  if(m.active) return `<span class="badge active"><span class="dot"></span>active</span>`;
+  if(m.running) return `<span class="badge running"><span class="dot"></span>running</span>`;
+  return `<span class="badge stopped"><span class="dot"></span>stopped</span>`;
+}
+function renderInstance(inst){
+  const div=document.createElement('div'); div.className='card'; div.style.background='var(--bg)';
+  const src = (inst.sources||[]).join(', ');
+  let html = `<div class="row" style="margin-bottom:10px">
+    <strong>:${inst.port}</strong>
+    <span class="dim">${inst.base_url}</span>
+    <span class="badge ${inst.reached?'running':'stopped'}"><span class="dot"></span>${inst.reached?'reached':'unreachable'}</span>
+    <span class="hint">pid ${inst.pid} · ${src}</span>
+    <span class="spacer"></span>
+    ${inst.active? `<span class="badge active"><span class="dot"></span>active: ${inst.active}</span>` : '<span class="hint">no active model</span>'}
+    <button class="btn danger sm" data-stop="${inst.port}">■ Stop</button>
+  </div>`;
+  html += `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Router (instance) rate</div>`;
+  html += metricBlock('r', inst.router);
+  if(inst.models.length){
+    html += `<table><thead><tr>
+      <th>Model</th>
+      <th>Kind</th><th>Status</th><th>Backend</th>
+      <th>Cur pg</th>
+      <th>Cur tg</th>
+      <th>Avg pg</th>
+      <th>Avg tg</th>
+    </tr></thead><tbody>`;
+    inst.models.forEach(m=>{
+      const llm=m.llm||{};
+      html += `<tr>
+        <td>${m.name}</td>
+        <td><span class="badge kind">${m.kind||'chat'}</span></td>
+        <td>${statusBadge(m)}${m.external?' <span class="hint">external</span>':''}</td>
+        <td class="dim">${m.port?(':'+m.port):''}${m.pid?' · pid '+m.pid:''}</td>
+        <td class="num">${fmt(llm.pg_current)}</td>
+        <td class="num">${fmt(llm.tg_current)}</td>
+        <td class="num">${fmt(llm.pg_avg)}</td>
+        <td class="num">${fmt(llm.tg_avg)}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+  } else {
+    html += `<div class="hint" style="margin-top:8px">No model data (instance not reachable).</div>`;
+  }
+  div.innerHTML = html;
+  const stopBtn=div.querySelector('[data-stop]');
+  if(stopBtn) stopBtn.addEventListener('click',()=>stopInstance(inst.port));
+  return div;
+}
+function renderBanner(def, instances){
+  const b=$('#banner');
+  if(def.running){
+    b.style.display='';
+    b.className='banner run';
+    b.innerHTML = `<span class="badge running"><span class="dot"></span>default running</span>
+      <span>The default instance is running on <strong>:${def.port}</strong> (${def.path}).</span>
+      <span class="spacer"></span>
+      <span class="hint">The dashboard never auto-starts a router — use Overview or Run Instance to manage instances.</span>`;
+  } else if(instances.length>0){
+    b.style.display='';
+    b.className='banner stop';
+    b.innerHTML = `<span class="badge stopped"><span class="dot"></span>default not running</span>
+      <span>The default instance is not running — ${instances.length} other instance${instances.length>1?'s':''} active.</span>`;
+  } else {
+    // Nothing is running: the "no default instance" notice is the floating pop-up, not this inline banner.
+    b.style.display='none';
+    b.innerHTML='';
+  }
+}
+function startDefaultInstance(btn){
+  if(!btn) return;
+  btn.disabled=true;
+  const failStart=(msg)=>{ const m=$('#noInstPop .pop-msg'); if(m) m.textContent='Failed to start: '+msg; btn.disabled=false; };
+  jsend('/api/run-default',{}).then(res=>{
+    if(res.ok||res.already_running){ setTimeout(refreshOverview, 800); }   // re-render: pop-up slides up, running banner appears
+    else failStart(res.error||'unknown error');
+  }).catch(e=>failStart(String(e)));
+}
+let popTimer=null, popBuilt=false;
+function updateNoInstPop(instances, def){
+  const pop=$('#noInstPop'); if(!pop) return;
+  if(!instances.length){
+    if(!popBuilt){
+      $('#noInstPopInner').innerHTML =
+        `<span class="badge stopped"><span class="dot"></span>no instances</span>
+         <span class="pop-msg">No default instance on <strong>:${def.port}</strong>. Start it with one click:</span>
+         <button class="btn" id="runDefaultBtnPop">▶ Run default instance</button>`;
+      startDefaultInstance($('#runDefaultBtnPop'));
+      popBuilt=true;
+    }
+    if(popTimer){ clearTimeout(popTimer); popTimer=null; }
+    pop.setAttribute('aria-hidden','false');
+    pop.classList.remove('gone');
+    void pop.offsetWidth;              // restart the entry transition
+    pop.classList.add('on');
+  } else if(pop.classList.contains('on')){
+    // An instance is now running -> dismiss the pop-up: it slides from the bottom to the top and fades out.
+    pop.classList.remove('on');
+    pop.classList.add('gone');
+    pop.setAttribute('aria-hidden','true');
+    popTimer=setTimeout(()=>{ pop.classList.remove('gone'); popBuilt=false; }, 420);
+  }
+}
+async function stopInstance(port){
+  if(!confirm(`Stop the router instance on :${port}?\nThis stops the router and any model it started.`)) return;
+  const btns=$$(`[data-stop="${port}"]`);
+  btns.forEach(b=>{ b.disabled=true; b.textContent='stopping…'; });
+  try{
+    const res=await jsend('/api/instances/stop',{port});
+    if(res.ok) showStatus($('#ovStatus'), true, `Stopped instance on :${port} (pid ${(res.stopped||[]).join(', ')}).`);
+    else showStatus($('#ovStatus'), false, res.error||'stop failed');
+  }catch(e){ showStatus($('#ovStatus'), false, String(e)); }
+  btns.forEach(b=>{ b.disabled=false; b.textContent='■ Stop'; });
+  refreshOverview();
+}
+async function refreshOverview(){
+  let d; try{ d=await jget('/api/instances'); }catch(e){ return; }
+  applyOverview(d);
+}
+function applyOverview(d){
+  $('#ver').textContent = d.version;
+  renderBanner(d.default, d.instances);
+  const wrap=$('#instances'); wrap.innerHTML='';
+  if(!d.instances.length) wrap.innerHTML='<div class="empty">No router instances are running. Start one from the pop-up or the Run Instance tab.</div>';
+  d.instances.forEach(i=>wrap.appendChild(renderInstance(i)));
+  if(d.default && d.default.path) $('#cfgpath').textContent='Opened with config: '+d.default.path;
+  updateNoInstPop(d.instances, d.default);
+}
+function startPolling(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer=setInterval(async ()=>{
+    let d; try{ d=await jget('/api/instances'); }catch(e){ return; }
+    if($('#tab-overview').classList.contains('active')) applyOverview(d);
+    else updateNoInstPop(d.instances, d.default);   // keep the pop-up current even when the Overview tab is not active
+  }, 5000);
+}
+
+/* -------------------------------- run --------------------------------- */
+let cfgData=null;
+function buildRunForm(){
+  const f=$('#runForm'); f.innerHTML='';
+  const models = (cfgData && cfgData.models) || [];
+  const names = models.map(m=>m.name);
+  f.innerHTML = `
+    <div><label class="field">Port</label><input type="number" id="runPort" placeholder="e.g. 18591"></div>
+    <div style="grid-column:1/-1"><label class="field">LLMs to include</label>
+      <div class="fgrid" id="runModels"></div></div>
+    <div><label class="field">Default / active model</label><select id="runDefault"></select></div>
+    <div><label class="field">Preload default model</label>
+      <div class="switch"><input type="checkbox" id="runPreload" checked><span class="hint">preload</span></div></div>`;
+  const rm=$('#runModels');
+  models.forEach(m=>{ rm.insertAdjacentHTML('beforeend',
+    `<label class="switch"><input type="checkbox" class="runModel" value="${m.name}" checked> ${m.name} <span class="badge kind">${m.kind||'chat'}</span></label>`); });
+  if(!models.length) rm.innerHTML='<span class="hint">No models in the default config. Add some in the Config tab first.</span>';
+  const rd=$('#runDefault');
+  names.forEach(n=>{ rd.insertAdjacentHTML('beforeend',`<option value="${n}">${n}</option>`); });
+  $('#runPort').value = d_suggested || '';
+  $$('.runModel',f).forEach(cb=>cb.addEventListener('change', syncRunDefault));
+  function syncRunDefault(){
+    const sel=$$('.runModel',f).filter(c=>c.checked).map(c=>c.value);
+    const cur=rd.value; const opt=sel.map(n=>`<option value="${n}" ${n===cur?'selected':''}>${n}</option>`).join('');
+    if(sel.length){ rd.innerHTML=opt; }
+    else { rd.innerHTML='<option value="">(none)</option>'; }
+  }
+  syncRunDefault();
+}
+let d_suggested=null;
+async function loadConfig(){
+  try{ cfgData=await jget('/api/config'); }catch(e){ cfgData={models:[],router:{},raw:'',errors:String(e)}; }
+  d_suggested = null;
+  try{ const d=await jget('/api/instances'); d_suggested=d.suggested_port; }catch(e){}
+  buildRunForm();
+  buildRouterForm(cfgData.router||{});
+  buildDashboardForm(cfgData.dashboard||{});
+  buildModelCards(cfgData.models||[]);
+  $('#rawYaml').value = cfgData.raw || '';
+  $('#cfgMeta').textContent = cfgData.path;
+  $('#cfgValid').innerHTML = cfgData.valid ? '<span style="color:var(--good)">valid</span>' : `<span style="color:var(--bad)">${cfgData.errors||'invalid'}</span>`;
+}
+
+/* --------------------------- config: structured ----------------------- */
+// Placeholders shown when a text/number field is empty. "(optional)" marks a field the
+// router can live without (it falls back to a default); the rest are examples/defaults.
+const FIELD_PH={
+  // Router
+  host:'e.g. 127.0.0.1',
+  port:'8787',
+  api_key:'(optional) Bearer token required on data paths; empty = no auth',
+  startup_timeout:'(optional, default 600)',
+  health_interval:'(optional, default 1.0)',
+  health_path:'(optional, e.g. /health)',
+  log_dir:'e.g. ./logs',
+  shutdown_grace:'(optional, default 10)',
+  // Dashboard
+  'dash.host':'e.g. 127.0.0.1',
+  'dash.port':'8799',
+  // Models
+  'm.name':'model name (the hermes-facing id)',
+  'm.upstream_model':'(optional, defaults to Name)',
+  'm.startup_timeout':'(optional, default 600)',
+  'm.health_path':'(optional, e.g. /health)',
+  'm.context_length':'(optional, e.g. 131072)',
+};
+const ROUTER_FIELDS=[
+  ['host','Host',''],
+  ['port','Port',''],
+  ['api_key','API key',''],
+  ['default_model','Default model',''],
+  ['startup_timeout','Startup timeout (s)',''],
+  ['health_interval','Health interval (s)','Seconds between readiness probes to each model backend. The router polls the model Health path every this many seconds until it answers; lower = faster readiness detection, higher = less polling load.'],
+  ['health_path','Health path','The HTTP path probed on each model backend to check it is ready (e.g. /health or /api/tags for llama.cpp, / for splash). Set it to the endpoint your backend actually serves.'],
+  ['log_dir','Log dir',''],
+  ['shutdown_grace','Shutdown grace (s)','Seconds the router waits for a model to exit cleanly after SIGTERM before forcing it with SIGKILL on stop/shutdown.'],
+  ['keep_inactive_stopped','Keep inactive stopped',''],
+  ['preload','Preload default model','When on, the default model is loaded into memory as soon as the instance starts so the first request is fast. When off, the model loads lazily on the first request.'],
+];
+function buildRouterForm(router){
+  const f=$('#routerForm'); f.innerHTML='';
+  const models=(cfgData&&cfgData.models)||[];
+  ROUTER_FIELDS.forEach(([key,label,tip])=>{
+    const val = router[key];
+    const ph = FIELD_PH[key]||'';
+    let control;
+    if(key==='keep_inactive_stopped'||key==='preload'){
+      // label already shown in the field label above; the inline span carries no tooltip (avoids the duplicate)
+      control=`<div class="switch"><input type="checkbox" data-field="${key}" ${val?'checked':''}><span>${label}</span></div>`;
+    } else if(key==='default_model'){
+      const opts=models.map(m=>`<option value="${m.name}" ${m.name===val?'selected':''}>${m.name}</option>`);
+      if(val && !models.some(m=>m.name===val)) opts.unshift(`<option value="${val}" selected>${val}</option>`);
+      control=`<select data-field="${key}" data-str="1">${opts.join('')}</select>`;
+    } else if(['host','api_key','health_path','log_dir'].includes(key)){
+      control=`<input type="text" data-field="${key}" data-str="1" value="${val==null?'':val}" placeholder="${ph}">`;
+    } else {
+      control=`<input type="number" data-field="${key}" data-num="1" value="${val==null?'':val}" placeholder="${ph}">`;
+    }
+    f.insertAdjacentHTML('beforeend', `<div><label class="field">${label}${tipSpan(tip)}</label>${control}</div>`);
+  });
+}
+const DASH_FIELDS=[
+  ['host','Host',''],
+  ['port','Port',''],
+  ['browser','Open browser on start',''],
+];
+function buildDashboardForm(dash){
+  const f=$('#dashboardForm'); if(!f) return; f.innerHTML='';
+  DASH_FIELDS.forEach(([key,label,tip])=>{
+    const val=dash[key];
+    const ph=FIELD_PH['dash.'+key]||'';
+    let control;
+    if(key==='browser'){
+      control=`<div class="switch"><input type="checkbox" data-df="${key}" ${val!==false?'checked':''}><span>${label}${tipSpan(tip)}</span></div>`;
+    } else if(key==='host'){
+      control=`<input type="text" data-df="${key}" data-str="1" value="${val==null?'':val}" placeholder="${ph}">`;
+    } else {
+      control=`<input type="number" data-df="${key}" data-num="1" value="${val==null?'':val}" placeholder="${ph}">`;
+    }
+    f.insertAdjacentHTML('beforeend', `<div><label class="field">${label}${tipSpan(tip)}</label>${control}</div>`);
+  });
+}
+function modelFields(){
+  return [
+    ['name','Name','','text'],
+    ['upstream_model','Upstream model','','text'],
+    ['startup_timeout','Startup timeout (s)','Seconds this model backend gets to finish loading before the router gives up waiting for it. Raise for large models or slow disks.','num'],
+    ['health_path','Health path','Readiness endpoint path for this model backend, overriding the router-level Health path (e.g. /health for llama.cpp).','text'],
+    ['context_length','Context length','','num'],
+    ['reasoning_effort','Reasoning effort','','select'],
+    ['kind','Kind','','kind'],
+  ];
+}
+function buildModelCards(models){
+  const f=$('#modelsForm'); f.innerHTML='';
+  if(!models.length) f.innerHTML='<div class="empty">No models yet — click "Add model".</div>';
+  models.forEach(m=>f.appendChild(modelCard(m)));
+}
+function modelCard(m){
+  m=m||{env:{}};
+  const div=document.createElement('div'); div.className='model-card';
+  const head=`<h3><span class="dim" data-hd>${m.name||'new model'}</span>
+    <button class="btn danger sm" data-rm>Remove</button></h3>`;
+  let grid='<div class="fgrid">';
+  modelFields().forEach(([key,label,tip,type])=>{
+    const val=m[key];
+    const ph=FIELD_PH['m.'+key]||'';
+    let control;
+    if(type==='select'){
+      const opts=['','none','minimal','low','medium','high','xhigh','max'];
+      control=`<select data-mf="${key}">`+opts.map(o=>`<option value="${o}" ${o===(val||'')?'selected':''}>${o||'auto'}</option>`).join('')+'</select>';
+    } else if(type==='kind'){
+      control=`<select data-mf="${key}"><option value="chat" ${val==='chat'?'selected':''}>chat</option><option value="embedding" ${val==='embedding'?'selected':''}>embedding</option></select>`;
+    } else if(type==='num'){
+      control=`<input type="number" data-mf="${key}" data-num="1" value="${val==null?'':val}" placeholder="${ph}">`;
+    } else {
+      control=`<input type="text" data-mf="${key}" data-str="1" value="${val==null?'':val}" placeholder="${ph}">`;
+    }
+    grid+=`<div><label class="field">${label}${tipSpan(tip)}</label>${control}</div>`;
+  });
+  grid+='</div>';
+  // Command on its own line (full width) — wider than a grid cell — sitting just above Env.
+  const commandField=`<div style="margin-top:8px"><label class="field">Command</label>
+    <input type="text" data-mf="command" data-str="1" value="${m.command==null?'':m.command}" placeholder="splash serve --model ... --port 8080 --max-context 131072" style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px"></div>`;
+  const envLines=Object.entries(m.env||{}).map(([k,v])=>`${k}=${v}`).join('\n');
+  div.innerHTML = head + grid + commandField +
+    `<div style="margin-top:8px"><label class="field">Env (KEY=VALUE, one per line)${tipSpan('Extra environment variables (KEY=VALUE, one per line) passed to this model backend when it starts — e.g. FLASH_ATTN=1, NUM_THREADS=8, or an HF token.')}</label>
+      <textarea data-mf="env" rows="2" placeholder="(optional) e.g. FLASH_ATTN=1">${envLines}</textarea></div>`;
+  div.querySelector('[data-rm]').addEventListener('click',()=>{
+    const f=$('#modelsForm'); if($$('.model-card',f).length<=1){} div.remove();
+    if(!$$('.model-card',f).length) f.innerHTML='<div class="empty">No models yet — click "Add model".</div>';
+  });
+  return div;
+}
+function collectStructured(){
+  const router={};
+  $$('#routerForm [data-field]').forEach(el=>{
+    const k=el.getAttribute('data-field'); let v;
+    if(el.type==='checkbox'){ v=el.checked; }
+    else if(el.dataset.num==='1'){ v=(el.value===''?null:Number(el.value)); }
+    else { v=(el.value===''?null:el.value); }
+    router[k]=v;
+  });
+  ['startup_timeout','health_interval','shutdown_grace'].forEach(k=>{ if(router[k]===null) delete router[k]; });
+  const models=[];
+  $$('.model-card').forEach(card=>{
+    const m={};
+    $$('[data-mf]',card).forEach(el=>{
+      const k=el.getAttribute('data-mf');
+      if(k==='env') return;
+      let v;
+      if(el.dataset.num==='1'){ v=(el.value===''?null:Number(el.value)); }
+      else { v=(el.value===''?null:el.value); }
+      m[k]=v;
+    });
+    ['startup_timeout','context_length'].forEach(k=>{ if(m[k]===null) delete m[k]; });
+    const envTa=card.querySelector('[data-mf=env]');
+    const env={}; if(envTa) envTa.value.split('\n').forEach(line=>{ const i=line.indexOf('='); if(i>0) env[line.slice(0,i).trim()]=line.slice(i+1).trim(); });
+    m.env=env;
+    models.push(m);
+  });
+  const dashboard={};
+  $$('#dashboardForm [data-df]').forEach(el=>{
+    const k=el.getAttribute('data-df'); let v;
+    if(el.type==='checkbox'){ v=el.checked; }
+    else if(el.dataset.num==='1'){ v=(el.value===''?null:Number(el.value)); }
+    else { v=(el.value===''?null:el.value); }
+    dashboard[k]=v;
+  });
+  if(dashboard.port===null) delete dashboard.port;
+  return {router,models,dashboard};
+}
+$('#addModelBtn').addEventListener('click',()=>{
+  const f=$('#modelsForm'); const empty=$('.empty',f); if(empty) empty.remove();
+  f.appendChild(modelCard({}));
+});
+
+/* --------------------------- config: save ----------------------------- */
+let cfgMode='structured';
+$$('.mode-toggle button').forEach(b=>b.addEventListener('click',()=>{
+  cfgMode=b.dataset.mode; $$('.mode-toggle button').forEach(x=>x.classList.toggle('active',x===b));
+  $('#cfgStructured').style.display = cfgMode==='structured'?'':'none';
+  $('#cfgRaw').style.display = cfgMode==='raw'?'':'none';
+}));
+$('#saveCfgBtn').addEventListener('click', async ()=>{
+  const btn=$('#saveCfgBtn'); btn.disabled=true;
+  let body, url;
+  if(cfgMode==='structured'){ body=collectStructured(); url='/api/config'; }
+  else { body={raw:$('#rawYaml').value}; url='/api/config/raw'; }
+  try{
+    const res=await jsend(url,body,'PUT');
+    if(res.ok){ showStatus($('#cfgStatus'),true,'Saved to '+res.path+' (a .bak backup was kept).'); await loadConfig(); }
+    else showStatus($('#cfgStatus'),false,res.error||'save failed');
+  }catch(e){ showStatus($('#cfgStatus'),false,String(e)); }
+  btn.disabled=false;
+});
+
+/* -------------------------------- run --------------------------------- */
+$('#runBtn').addEventListener('click', async ()=>{
+  const btn=$('#runBtn'); btn.disabled=true;
+  const port=Number($('#runPort').value||0);
+  const models=$$('.runModel').filter(c=>c.checked).map(c=>c.value);
+  const body={port, models, default_model:$('#runDefault').value, preload:$('#runPreload').checked};
+  try{
+    const res=await jsend('/api/run-instance',body);
+    if(res.ok) showStatus($('#runStatus'),true,`Started instance on :${res.port} (launch pid ${res.launch_pid}). It will appear in Overview shortly.`);
+    else showStatus($('#runStatus'),false,res.error||'failed to start');
+    if(res.ok) setTimeout(refreshOverview, 1000);
+  }catch(e){ showStatus($('#runStatus'),false,String(e)); }
+  btn.disabled=false;
+});
+
+/* -------------------------------- logs -------------------------------- */
+async function refreshLogs(){
+  let d; try{ d=await jget('/api/logs'); }catch(e){ $('#logsList').innerHTML='<div class="empty">Could not list logs.</div>'; return; }
+  const list=$('#logsList'); list.innerHTML='';
+  if(!d.logs.length){ list.innerHTML='<div class="empty">No running instances — nothing to watch yet.</div>'; return; }
+  d.logs.forEach(l=>{
+    const item=document.createElement('div'); item.className='log-item';
+    const isW=(l.id===watchedLogId);
+    const btn = isW
+      ? `<button class="btn sm danger">Stop watching</button>`
+      : `<button class="btn sm" ${l.exists?'':'disabled'}>Watch</button>`;
+    item.innerHTML=`<span class="kind ${l.kind}">${l.kind}</span><span class="lbl">${l.label}</span>
+      ${l.exists?'':'<span class="hint">no file yet</span>'}${btn}`;
+    item.querySelector('button').addEventListener('click',()=>{
+      if(l.id===watchedLogId) stopWatch(); else watchLog(l);
+      refreshLogs();
+    });
+    list.appendChild(item);
+  });
+}
+async function watchLog(l){
+  stopWatch();
+  watchedLogId=l.id;
+  const v=$('#viewer'); v.classList.add('on');
+  v.innerHTML=`<div class="hd"><strong>${l.label}</strong><span class="hint">streaming…</span>
+    <span class="spacer"></span><button class="btn danger sm" id="stopWatch">Stop</button>
+    <button class="btn ghost sm" id="autoScroll">Auto-scroll: on</button></div><div id="logbody"></div>`;
+  const body=$('#logbody'); let auto=true;
+  $('#autoScroll').addEventListener('click',e=>{ auto=!auto; e.target.textContent='Auto-scroll: '+(auto?'on':'off'); });
+  const ctrl=new AbortController();
+  watching={ctrl};
+  $('#stopWatch').addEventListener('click',()=>{ stopWatch(); refreshLogs(); });
+  try{
+    const r=await fetch(`/api/logs/stream?id=${l.id}&lines=200`, {signal:ctrl.signal});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const reader=r.body.getReader(); const dec=new TextDecoder();
+    while(true){
+      const {value,done}=await reader.read(); if(done) break;
+      body.textContent += dec.decode(value,{stream:true});
+      if(auto) v.scrollTop=v.scrollHeight;
+    }
+  }catch(e){
+    if(e.name!=='AbortError') body.textContent += '\n[stream error: '+e.message+']';
+  }
+}
+function stopWatch(){ if(watching){ watching.ctrl.abort(); watching=null; } watchedLogId=null; const v=$('#viewer'); v.classList.remove('on'); }
+$('#refreshLogsBtn').addEventListener('click',refreshLogs);
+
+/* -------------------------------- init -------------------------------- */
+initTheme();
+(async function init(){
+  await Promise.all([loadConfig(), refreshOverview()]);
+  startPolling();
+})();
+</script>
+</body>
+</html>

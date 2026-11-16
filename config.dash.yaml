@@ -1,0 +1,35 @@
+# DASHBOARD end-to-end test config — isolated ports only (18xxx), never touches
+# the real splash (:8080) / llama (:8081) servers.
+router:
+  host: 127.0.0.1
+  port: 18590
+  api_key: ""
+  default_model: qwen-local
+  startup_timeout: 30
+  health_interval: 0.2
+  log_dir: /tmp/dash_test_logs
+  keep_inactive_stopped: true
+  preload: true
+
+dashboard:
+  host: 127.0.0.1
+  port: 18930
+  browser: false
+
+models:
+  - name: qwen-local               # default; preloaded by instance :18590 (mock-a :18501)
+    upstream_model: mock-a
+    context_length: 131072
+    reasoning_effort: high
+    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18501 --model mock-a
+
+  - name: qwen-second              # backend :18503 — used by the dashboard "run instance" (no port clash)
+    upstream_model: mock-c
+    context_length: 131072
+    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18503 --model mock-c
+
+  - name: embed-local              # embedding; managed but never a chat model (mock-b :18502)
+    upstream_model: mock-b
+    context_length: 4096
+    kind: embedding
+    command: /Users/nnzlgg/llm-router/.venv/bin/python /Users/nnzlgg/llm-router/mock_llm.py --host 127.0.0.1 --port 18502 --model mock-b
