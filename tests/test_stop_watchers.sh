@@ -77,9 +77,13 @@ fi
 
 # Start a plain `watch` and a `watch --llm` in the background (other-terminal style).
 # Each is scoped to the test port so `stop --port` targets exactly these watchers.
-"$PY" -m llm_router watch --port "$ROUTER_PORT" >/dev/null 2>&1 &
+# Both watchers get the test's own config (like `run` above): on a fresh checkout
+# there is no repo/user config.yaml, so a bare `watch --llm` (no --config) would
+# die with "config error" before `stop` could target it. Scoped to $ROUTER_PORT
+# so `stop --port` targets exactly these watchers.
+"$PY" -m llm_router watch --config "$CFG" --port "$ROUTER_PORT" >/dev/null 2>&1 &
 WATCH_PID=$!
-"$PY" -m llm_router watch --llm --port "$ROUTER_PORT" >/dev/null 2>&1 &
+"$PY" -m llm_router watch --llm --config "$CFG" --port "$ROUTER_PORT" >/dev/null 2>&1 &
 WATCH_LLM_PID=$!
 sleep 1.5
 

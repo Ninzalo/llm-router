@@ -203,7 +203,7 @@ def build_app(cfg: RouterConfig) -> FastAPI:
         # process and must not survive the router's shutdown.
         await mgr.shutdown()
 
-    app = FastAPI(title="llm-router", version="1.0.4", lifespan=lifespan,
+    app = FastAPI(title="llm-router", version="1.0.5", lifespan=lifespan,
                   docs_url=None, openapi_url=None, redoc_url=None)
 
     def _authed(request: Request) -> bool:
