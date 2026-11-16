@@ -67,9 +67,9 @@ EOF
 # only need the router's /health + /admin/active endpoints up.
 llm-router run --config "$CFG" --no-preload >/dev/null || { echo "FATAL: router failed to start"; exit 2; }
 
-for i in $(seq 1 50); do
+for i in $(seq 1 100); do
   if health; then break; fi
-  sleep 0.2
+  sleep 0.3
 done
 if ! health; then
   echo "FATAL: router did not come up on $ROUTER_PORT"; exit 2
@@ -93,7 +93,12 @@ echo "  watchers running before stop: plain=$WATCH_PID  llm=$WATCH_LLM_PID"
 
 echo "  -> llm-router stop --port $ROUTER_PORT"
 llm-router stop --port "$ROUTER_PORT"
-sleep 1.5
+# Give the stop time to propagate (a fixed 1.5s sleep is fragile on slow/loaded
+# CI runners): poll until both watchers are gone, up to ~10s, then judge below.
+for _ in $(seq 1 20); do
+  if ! kill -0 "$WATCH_PID" 2>/dev/null && ! kill -0 "$WATCH_LLM_PID" 2>/dev/null; then break; fi
+  sleep 0.5
+done
 
 FAIL=0
 if kill -0 "$WATCH_PID" 2>/dev/null; then

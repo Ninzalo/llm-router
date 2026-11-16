@@ -56,9 +56,14 @@ models:
 EOF
 
 llm-router run --config "$CFG" >/dev/null || { echo "FATAL: router failed to start"; exit 2; }
-# Wait long enough for the model to be spawned but still loading (delay=8).
-sleep 3
-MPID="$(pgrep -f "mock_llm.py --host 127.0.0.1 --port $MOCK_PORT" | head -1 || true)"
+# Poll for the model process instead of a fixed sleep: preload spawns the model
+# shortly after start, but a fixed 3s is fragile on slow/loaded CI runners.
+MPID=""
+for _ in $(seq 1 30); do
+  MPID="$(pgrep -f "mock_llm.py --host 127.0.0.1 --port $MOCK_PORT" | head -1 || true)"
+  if [ -n "$MPID" ] && kill -0 "$MPID" 2>/dev/null; then break; fi
+  sleep 0.5
+done
 if [ -z "$MPID" ] || ! kill -0 "$MPID" 2>/dev/null; then
   echo "FAIL: could not confirm the model was in startup state (pid=${MPID:-none})"
   exit 1

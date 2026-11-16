@@ -30,6 +30,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 
+      - name: Show CI environment (diagnostic)
+        run: |
+          echo "=== os ==="; head -2 /etc/os-release
+          echo "=== python ==="; python --version; python -m pip --version
+          echo "=== key packages ==="; python -m pip list 2>/dev/null | grep -iE '^(fastapi|uvicorn|httpx|yaml|pydantic|uvloop|httptools|watchfiles) ' || true
+          echo "=== tools ==="; for t in lsof curl pgrep pkill ss netstat; do command -v "$t" >/dev/null 2>&1 && echo "  $t: yes" || echo "  $t: NO"; done
+
       - name: Backend suite (27 checks)
         run: bash tests/run_test.sh
 
@@ -49,12 +56,7 @@ jobs:
         run: bash tests/test_stop_watchers.sh
 
       - name: No stray test ports left behind
-        run: |
-          if lsof -nP -iTCP -sTCP:LISTEN | grep -Eq ':18[0-9]{3} '; then
-            echo "::error::A 18xxx test listener survived the suite"
-            lsof -nP -iTCP -sTCP:LISTEN | grep -E ':18[0-9]{3} '
-            exit 1
-          fi
+        run: python tests/check_stray_ports.py
 
   ui:
     name: Dashboard UI (jsdom, node ${{ matrix.node-version }})
