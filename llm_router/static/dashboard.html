@@ -350,7 +350,12 @@ function updateNoInstPop(instances, def){
         `<span class="badge stopped"><span class="dot"></span>no instances</span>
          <span class="pop-msg">No default instance on <strong>:${def.port}</strong>. Start it with one click:</span>
          <button class="btn" id="runDefaultBtnPop">▶ Run default instance</button>`;
-      startDefaultInstance($('#runDefaultBtnPop'));
+      // Wire the button — do NOT auto-start on build. The instance only starts
+      // when the user clicks. (Auto-starting here is what made `stop` impossible:
+      // the 5s poller rebuilt the pop-up and re-fired /api/run-default,
+      // resurrecting the instance the user had just stopped.)
+      const popBtn = $('#runDefaultBtnPop');
+      popBtn.addEventListener('click', () => startDefaultInstance(popBtn));
       popBuilt=true;
     }
     if(popTimer){ clearTimeout(popTimer); popTimer=null; }

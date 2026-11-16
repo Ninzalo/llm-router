@@ -295,6 +295,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("popup: has Run default button", !!d2.querySelector("#runDefaultBtnPop"));
   check("popup: aria-hidden cleared while shown", d2.querySelector("#noInstPop").getAttribute("aria-hidden") === "false");
   check("inline banner hidden when nothing running", d2.querySelector("#banner").style.display === "none");
+  // Regression: the pop-up must NOT auto-start the instance on load.
+  // (Old bug: updateNoInstPop called startDefaultInstance(), which immediately
+  //  POSTed /api/run-default — so `stop` was impossible, because the 5s poller
+  //  rebuilt the pop-up and re-fired run-default. The instance now starts only
+  //  on an explicit click of the button.)
+  check("popup: does NOT auto-start on load (no /api/run-default POST yet)",
+        !B.calls.some((c) => c.url === "/api/run-default" && c.method === "POST"));
   // click the pop-up's run-default button
   d2.querySelector("#runDefaultBtnPop").click();
   await sleep(80);
