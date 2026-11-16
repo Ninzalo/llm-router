@@ -7,7 +7,7 @@ A config file is a YAML document with two top-level keys:
 
 Each model entry needs at minimum:
 
-    name:    the id exposed to hermes-agent (what you type in /model,
+    name:    the id exposed to the client (what you type in /model,
              and what is returned by GET /v1/models).
     command: the full startup command *with arguments*, e.g.
              "splash serve --model X --host 127.0.0.1 --port 8080 ..."
@@ -31,17 +31,17 @@ _PORT_RE = re.compile(r"--port[= ]([0-9]+)")
 # Match "--host 127.0.0.1", "--host=0.0.0.0".
 _HOST_RE = re.compile(r"--host[= ]([A-Za-z0-9.\-]+)")
 
-# hermes-agent refuses to make a model the active one unless its advertised
-# context window is at least this (agent/model_metadata.py: MINIMUM_CONTEXT_LENGTH).
-# A *chat* model below this cannot be selected as the active model in hermes.
-HERMES_CONTEXT_MIN = 64_000
+# A client will refuse to make a model the active one unless its advertised
+# context window is at least this.
+# A *chat* model below this cannot be selected as the active model.
+MIN_CONTEXT_LEN = 64_000
 
-# Reasoning-effort levels hermes-agent's `custom` provider may send/accept.
+# Reasoning-effort levels a `custom` provider may send/accept.
 REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 
-# Model kinds. "chat" models are hermes active-model candidates (listed in
+# Model kinds. "chat" models are active-model candidates (listed in
 # GET /v1/models). "embedding" models are managed by the router (start/stop,
-# /v1/embeddings) but are NOT offered in the hermes chat picker, because they
+# /v1/embeddings) but are NOT offered in the chat picker, because they
 # can never serve /v1/chat/completions.
 KINDS = ("chat", "embedding")
 
@@ -55,7 +55,7 @@ class ModelSpec:
     port: Optional[int] = None
     startup_timeout: Optional[float] = None
     health_path: Optional[str] = None
-    context_length: Optional[int] = None   # advertised to hermes via /v1/models
+    context_length: Optional[int] = None   # advertised via /v1/models
     reasoning_effort: Optional[str] = None  # model's default reasoning effort (forwarded)
     kind: str = "chat"                      # "chat" or "embedding"
     env: dict[str, str] = field(default_factory=dict)

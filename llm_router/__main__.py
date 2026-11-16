@@ -59,7 +59,7 @@ import uvicorn
 
 from . import __version__
 from .app import build_app
-from .config import HERMES_CONTEXT_MIN, load_config, safe_filename
+from .config import MIN_CONTEXT_LEN, load_config, safe_filename
 
 
 # ------------------------------------------------------------------ config path
@@ -109,12 +109,12 @@ def _print_resolved(cfg, cfg_path: Path) -> None:
     for m in cfg.models:
         ctx = f"  context_length={m.context_length}" if m.context_length else ""
         re_ = f"  reasoning_effort={m.reasoning_effort}" if m.reasoning_effort else ""
-        in_picker = "" if m.kind == "chat" else "  (not in hermes /model picker)"
+        in_picker = "" if m.kind == "chat" else "  (not in the /model picker)"
         print(f"  - {m.name!r} [{m.kind}] -> {m.base_url}  upstream_model={m.upstream_model!r}"
               f"  default={m.name == cfg.default_model}{ctx}{re_}{in_picker}")
-        if m.kind == "chat" and m.context_length is not None and m.context_length < HERMES_CONTEXT_MIN:
-            print(f"      WARNING: context_length below hermes's {HERMES_CONTEXT_MIN} minimum — "
-                  f"hermes will refuse to select it (mark kind: embedding, or raise the window)")
+        if m.kind == "chat" and m.context_length is not None and m.context_length < MIN_CONTEXT_LEN:
+            print(f"      WARNING: context_length below the client's {MIN_CONTEXT_LEN} minimum — "
+                  f"a client will refuse to select it (mark kind: embedding, or raise the window)")
         print(f"      cmd: {m.command}")
 
 
@@ -136,7 +136,7 @@ _TEMPLATE = """\\\
 router:
   host: 127.0.0.1
   port: 8787
-  api_key: ""            # if set, require "Authorization: Bearer ***"; mirror in hermes
+  api_key: ""            # if set, require "Authorization: Bearer ***"; mirror in your client
   default_model: my-model
   startup_timeout: 600
   log_dir: ./logs
@@ -149,9 +149,9 @@ models:
     #   (port/host are parsed from --port/--host unless set explicitly)
     command: "splash serve --model <repo:tag> --host 127.0.0.1 --port 8080"
     upstream_model: "<repo:tag>"   # id sent to the backend (defaults to name)
-    context_length: 131072         # advertised to hermes via /v1/models (>= 64000)
+    context_length: 131072         # advertised via /v1/models (>= 64000)
     reasoning_effort: high         # model's default reasoning effort (optional)
-    # kind: chat                   # chat (default) or embedding (not a hermes chat model)
+    # kind: chat                   # chat (default) or embedding (not a chat model)
 """
 
 
@@ -1024,7 +1024,7 @@ def cmd_models(args) -> int:
         tag = "  (default)" if m.name == cfg.default_model else ""
         ctx = f"  context_length={m.context_length}" if m.context_length else ""
         re_ = f"  reasoning_effort={m.reasoning_effort}" if m.reasoning_effort else ""
-        picker = "" if m.kind == "chat" else "  (not in hermes /model picker)"
+        picker = "" if m.kind == "chat" else "  (not in the /model picker)"
         print(f"  {m.name} [{m.kind}]{tag}{ctx}{re_}{picker}")
         print(f"      -> {m.base_url}   upstream={m.upstream_model}")
     return 0
@@ -1034,7 +1034,7 @@ def cmd_models(args) -> int:
 MAIN_HELP = """# llm-router
 
 OpenAI-compatible **router + lifecycle manager** for local LLM backends — the
-`custom` provider for hermes-agent. It advertises one preconfigured model id at a
+`custom` provider. It advertises one preconfigured model id at a
 time, keeps **only one large model in RAM** (memory-safe switching), and
 transparently proxies the OpenAI API (`/v1/chat/completions`, `/v1/embeddings`,
 …) to the active backend.
@@ -1134,7 +1134,7 @@ controlled the same way as `run` (`--preload` / `--no-preload` / `router.preload
 Follow logs live. By default it tails the **router's** log; with `--llm` it tails
 the **active model's own** log (its per-model file under `log_dir`) and
 **auto-switches** to the new model's log whenever the active model changes (via
-`llm-router switch` or hermes changing models). Ctrl+C stops watching only — the
+`llm-router switch` or the client changing models). Ctrl+C stops watching only — the
 router keeps running. Both modes require a router to be **running** on the target
 port: with none reachable, `watch` prints `cannot reach a router …` and exits — a
 leftover log file from a stopped run is not tailed.
@@ -1293,8 +1293,8 @@ Validate the config file and print the fully resolved router + model specs
 
 ## Notes
 
-- Warns if a `kind: chat` model advertises `context_length` below hermes's
-  64000 minimum (hermes would refuse to select it as the active model).
+- Warns if a `kind: chat` model advertises `context_length` below the client's
+  64000 minimum (a client would refuse to select it as the active model).
 """,
     "config": """# llm-router config
 

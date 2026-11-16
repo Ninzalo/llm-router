@@ -1,6 +1,6 @@
 """FastAPI app for the local LLM router.
 
-Exposes an OpenAI-compatible surface so hermes-agent can use it as a ``custom``
+Exposes an OpenAI-compatible surface so a client can use it as a ``custom``
 provider endpoint:
 
     GET  /v1/models           -> the list of *preconfigured* models (req #2)
@@ -29,7 +29,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from .config import HERMES_CONTEXT_MIN, RouterConfig
+from .config import MIN_CONTEXT_LEN, RouterConfig
 from .manager import ModelManager, ModelNotReady
 
 logger = logging.getLogger("llm_router.app")
@@ -69,8 +69,8 @@ def _prepare_body(body: bytes, spec) -> bytes:
 
     * rewrites ``model`` to what the local server expects (req #7);
     * injects the model's *default* ``reasoning_effort`` (from config) when the
-      client (hermes) did not set one, so the model's default applies while
-      hermes can still override it per-request (req #3).
+      client did not set one, so the model's default applies while
+      the client can still override it per-request (req #3).
     """
     if not body:
         return body
@@ -146,14 +146,14 @@ def build_app(cfg: RouterConfig) -> FastAPI:
             if m.kind != "chat":
                 logger.info(
                     "model '%s' is kind=%s (managed by the router, but not listed "
-                    "in the hermes /v1/models picker)", m.name, m.kind,
+                    "in the /v1/models picker)", m.name, m.kind,
                 )
-            elif m.context_length is not None and m.context_length < HERMES_CONTEXT_MIN:
+            elif m.context_length is not None and m.context_length < MIN_CONTEXT_LEN:
                 logger.warning(
-                    "model '%s' advertises context_length=%d, below hermes-agent's "
-                    "%d minimum — hermes will refuse to select it as the active model "
+                    "model '%s' advertises context_length=%d, below the client's "
+                    "%d minimum — a client will refuse to select it as the active model "
                     "(mark it kind: embedding, or raise its real context window)",
-                    m.name, m.context_length, HERMES_CONTEXT_MIN,
+                    m.name, m.context_length, MIN_CONTEXT_LEN,
                 )
         # Start the default model in the background so the router is reachable
         # immediately: a daemonised `llm-router run` returns right away and
@@ -203,7 +203,7 @@ def build_app(cfg: RouterConfig) -> FastAPI:
         # process and must not survive the router's shutdown.
         await mgr.shutdown()
 
-    app = FastAPI(title="llm-router", version="1.0.3", lifespan=lifespan,
+    app = FastAPI(title="llm-router", 1.0.4, lifespan=lifespan,
                   docs_url=None, openapi_url=None, redoc_url=None)
 
     def _authed(request: Request) -> bool:
@@ -220,10 +220,10 @@ def build_app(cfg: RouterConfig) -> FastAPI:
         mgr = _mgr(request)
         data = []
         for m in cfg.models:
-            # Only "chat" models are offered to hermes's /model picker. An
+            # Only "chat" models are offered to the /model picker. An
             # "embedding"-kind model can never be a valid active (chat) model,
             # so it stays out of the list — it is still managed (start/stop) and
-            # served for /v1/embeddings, just not selectable in hermes.
+            # served for /v1/embeddings, just not selectable in the picker.
             if m.kind != "chat":
                 continue
             obj = {
@@ -234,12 +234,12 @@ def build_app(cfg: RouterConfig) -> FastAPI:
                 "active": mgr.active == m.name,
             }
             if m.context_length:
-                # hermes reads `context_length` (then context_window/max_context_length)
+                # clients read `context_length` (then context_window/max_context_length)
                 # from the /v1/models object for custom endpoints.
                 obj["context_length"] = m.context_length
                 obj["max_context_length"] = m.context_length
             if m.reasoning_effort:
-                # the model's default reasoning effort, advertised so hermes can
+                # the model's default reasoning effort, advertised so clients can
                 # see it (and override it per-request).
                 obj["reasoning_effort"] = m.reasoning_effort
             data.append(obj)

@@ -114,7 +114,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("removed: theme button tooltip gone", !d.querySelector("#themeBtn").hasAttribute("data-tip"));
   check("removed: 'Current prompt' metric tooltip gone", !tipSet.has("Most recent prompt-processing speed (tokens/sec) — how fast this instance is chewing through the prompt."));
   // Task 1: Overview -> Running Instances -> active model badge tooltip removed
-  check("task1: active-model tooltip removed from tip set", !tipSet.has("This model is the instance's active model — /v1 requests from hermes are routed to it right now."));
+  check("task1: active-model tooltip removed from tip set", !tipSet.has("This model is the instance's active model — /v1 requests are routed to it right now."));
   check("4 tabs present", d.querySelectorAll(".tabs button").length === 4);
 
   // overview rendering

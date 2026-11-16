@@ -1,14 +1,14 @@
 # llm-router
 
 An **OpenAI-compatible router + lifecycle manager for local LLM backends**, built to
-plug into [hermes-agent](https://hermes-agent.nousresearch.com) as a `custom` endpoint.
+plug in as a `custom` OpenAI provider.
 
-You point hermes at the router once. The router:
+You point your client at the router once. The router:
 
 - serves a **faithful OpenAI-compatible API** — the whole `/v1/*` surface
   (`/v1/chat/completions`, `/v1/embeddings`, …), with streaming SSE passthrough, not a chat-only stub
-- **lists your preconfigured chat models** to hermes's `/model` picker (`GET /v1/models`)
-- **advertises each model's `context_length` and default `reasoning_effort`** to hermes
+- **lists your preconfigured chat models** to the `/model` picker (`GET /v1/models`)
+- **advertises each model's `context_length` and default `reasoning_effort`** to the client
 - **starts a default model on boot** — in the background, so the router is reachable while a big model loads
 - **switches the active model on demand** (preconfigured only; unknown → 400)
 - **stops the old model completely *before* starting the new one** — one big model in RAM at a time
@@ -20,7 +20,7 @@ configure, and inspect it from any directory — no `cd`, no venv activation. Th
 top-level command and **every subcommand** print a full **markdown `--help`**.
 
 ```
-hermes-agent ──(OpenAI)──▶  llm-router :8787/v1  ──▶  active local LLM (e.g. splash :8080)
+your client ──(OpenAI)──▶  llm-router :8787/v1  ──▶  active local LLM (e.g. splash :8080)
    /model picker ◀─ GET /v1/models          stops the old model *first*,
                                             starts the requested model,
                                             rewrites the `model` field to
@@ -30,7 +30,7 @@ hermes-agent ──(OpenAI)──▶  llm-router :8787/v1  ──▶  active loc
 
 ## Quick Setup
 
-The fastest path from a clean machine to a working hermes endpoint.
+The fastest path from a clean machine to a working OpenAI endpoint.
 
 ### 1. Install (one line)
 
@@ -75,10 +75,10 @@ llm-router status        # confirm the instance + active model
 
 The public OpenAI-compatible base is `http://127.0.0.1:8787/v1`.
 
-### 4. Point hermes at it
+### 4. Point your client at it
 
-Add a `custom` provider to your hermes config that targets the router (see the
-[Wiring it into hermes-agent](#wiring-it-into-hermes-agent-the-custom-endpoint) section):
+Add a `custom` provider to your client's config that targets the router (see the
+[Wiring it up](#wiring-it-up-the-custom-openai-endpoint) section):
 
 ```yaml
 model_aliases:
@@ -103,10 +103,10 @@ llm-router dashboard     # opens http://127.0.0.1:8799 in your browser
 | Area | What it does |
 |------|--------------|
 | **OpenAI proxy** | Faithful proxy for the whole `/v1/*` API (chat, embeddings, …). Streaming SSE passthrough. The router rewrites the request `model` field to what the local backend expects and passes the answer (JSON or SSE) back unchanged. |
-| **Model picker** | `GET /v1/models` lists your preconfigured **chat** models — the source of hermes's `/model` picker. `embedding`-kind models are hidden. |
-| **context_length** | Each model advertises `context_length` (and `max_context_length`) on `/v1/models`; hermes reads these for custom endpoints. Booting a `chat` model below hermes's 64,000 minimum logs a warning. |
+| **Model picker** | `GET /v1/models` lists your preconfigured **chat** models — the source of the `/model` picker. `embedding`-kind models are hidden. |
+| **context_length** | Each model advertises `context_length` (and `max_context_length`) on `/v1/models`; the client reads these for custom endpoints. Booting a `chat` model below the 64,000 minimum logs a warning. |
 | **reasoning_effort** | Per-model default `reasoning_effort` is advertised on `/v1/models`, injected into forwarded requests when the client omits it, and passed through unchanged when the client provides it. |
-| **kind** | `chat` (default) models are picker-visible; `embedding` models are fully router-managed (start/stop, `/v1/embeddings`) but hidden from hermes so they can't be mis-selected as the active chat model. |
+| **kind** | `chat` (default) models are picker-visible; `embedding` models are fully router-managed (start/stop, `/v1/embeddings`) but hidden from the picker so they can't be mis-selected as the active chat model. |
 | **Memory-safe switching** | The active model is stopped **completely** (whole process group SIGTERM'd, then awaited; SIGKILL after `shutdown_grace`) *before* the new one is spawned — the two never share RAM. |
 | **HF-style names** | Name a model exactly as its Hugging Face id, e.g. `unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M`. The name is used verbatim as the `/v1/models` id and for routing; only the per-model log filename is flattened by `safe_filename()`. |
 | **Daemon lifecycle** | `run` (background + log file), `serve` (foreground), `stop` (all instances + their models **and any `watch`/`watch --llm` tailers**), `stop-model`, `switch`, `status`, `models`, `check`, `config`. |
@@ -266,11 +266,11 @@ dashboard:               # defaults for the web dashboard (`llm-router dashboard
   browser: true          # auto-open the browser on start (a new window)
 
 models:
-  - name: unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M          # hermes-facing id (what you type in /model)
+  - name: unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M          # the id you type in /model
     upstream_model: unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M  # optional; sent to the backend. default = name
     host: 127.0.0.1                   # optional CONNECT host (defaults to --host in the command, else 127.0.0.1)
     port: 8080                        # optional; defaults to --port parsed from the command
-    context_length: 131072            # advertised to hermes via /v1/models (match your backend's ctx)
+    context_length: 131072            # advertised via /v1/models (match your backend's ctx)
     reasoning_effort: medium          # optional; default reasoning effort (injected if the client omits it)
     kind: chat                        # optional: chat (default, shown in /v1/models) | embedding (managed, hidden)
     command: splash serve --model unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M --host 0.0.0.0 --port 8080 --max-context 131072 --idle-release 1800
@@ -282,26 +282,26 @@ models:
 
 Per-model fields:
 
-- **`name`** — the id hermes sees: what you type in `/model` and what `GET /v1/models`
+- **`name`** — the id the client sees: what you type in `/model` and what `GET /v1/models`
   returns. It may be **any string**, including a Hugging Face id with `/` and `:`
   (e.g. `unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M`). It is used verbatim for routing and in
   the API; only the per-model **log file** is flattened (`unsloth-Qwen3.8-27B-GGUF-UD-Q4_K_M.log`).
 - **`command`** — the full startup command *with arguments*. Port/host are parsed from
   `--port`/`--host` unless you set them explicitly.
 - **`upstream_model`** — the model id placed in the forwarded request body (what the local
-  server actually expects). Defaults to `name`. This is how hermes can send one id while the
+  server actually expects). Defaults to `name`. This is how the client can send one id while the
   backend receives a different one.
-- **`context_length`** — the model's context window, advertised to hermes in the `/v1/models`
-  object (hermes reads `context_length` first, then `context_window`/`context_size`/
+- **`context_length`** — the model's context window, advertised in the `/v1/models`
+  object (the client reads `context_length` first, then `context_window`/`context_size`/
   `max_context_length`). Set it to your backend's `--max-context` / `--ctx-size`.
 - **`reasoning_effort`** — the model's default reasoning effort
   (`none/minimal/low/medium/high/xhigh/max`). Advertised on `GET /v1/models`, injected into
   forwarded requests when the client omits `reasoning_effort`, and passed through unchanged
-  when it's provided — so hermes (or any OpenAI client) can change the effort per-request.
-- **`kind`** — `chat` (default) models are listed on `GET /v1/models` and appear in hermes's
+  when it's provided — so any OpenAI client can change the effort per-request.
+- **`kind`** — `chat` (default) models are listed on `GET /v1/models` and appear in the
   `/model` picker. `embedding` models are still fully router-managed (start/stop,
-  `/v1/embeddings`) but **hidden from the hermes picker** — so an embeddings-only backend
-  can't be mis-selected as the active chat model and trip hermes's 64K minimum-context check.
+  `/v1/embeddings`) but **hidden from the picker** — so an embeddings-only backend
+  can't be mis-selected as the active chat model and trip the client's 64K minimum-context check.
 - **`host` / `port`** — the address the router *connects to*. By default these are parsed
   from the model's `command` (`--host`/`--port`); set `host` explicitly when the backend
   binds to a different address (e.g. splash binds `0.0.0.0` but you connect via
@@ -317,10 +317,10 @@ Dashboard** section (structured) or in Raw YAML. CLI flags on `llm-router dashbo
 takes effect the next time the dashboard starts. If the section is absent, the built-in
 defaults (`127.0.0.1:8799`, browser on) apply.
 
-## Wiring it into hermes-agent (the custom endpoint)
+## Wiring it up (the custom OpenAI endpoint)
 
-The router is a standard OpenAI-compatible endpoint, so hermes consumes it through its
-`custom` provider. Register it once under `custom_providers` and point hermes at it:
+The router is a standard OpenAI-compatible endpoint, so your client consumes it through its
+`custom` provider. Register it once under `custom_providers` and point the client at it:
 
 ```yaml
 model:
@@ -332,12 +332,12 @@ custom_providers:
   - name: llm-router
     base_url: http://127.0.0.1:8787/v1
     model: unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M
-    models_discovered: true        # hermes pulls the model list from the router's GET /v1/models
+    models_discovered: true        # the client pulls the model list from the router's GET /v1/models
 ```
 
-- **`models_discovered: true`** is the cleanest: hermes queries the router's
+- **`models_discovered: true`** is the cleanest: the client queries the router's
   `GET /v1/models` to populate its picker, so you never have to list the models by hand.
-  Because the router only lists `chat` models, hermes's picker can only ever offer chat
+  Because the router only lists `chat` models, the picker can only ever offer chat
   models — the 64K minimum-context rejection can't happen from an embeddings backend.
 - If you prefer to pin them explicitly, list each under `models:` instead of using
   `models_discovered`:
@@ -350,12 +350,12 @@ custom_providers:
         unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M: {}
         unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL: {}
   ```
-- **You don't set a context length or reasoning effort in hermes** — hermes reads both from
+- **You don't set a context length or reasoning effort in the client** — the client reads both from
   the router's `/v1/models` response for custom endpoints, which is where the router
   advertises them.
-- If you set `router.api_key`, mirror it as the provider's `api_key` in hermes.
+- If you set `router.api_key`, mirror it as the provider's `api_key` in your client.
 
-Then in hermes: `/model` to pick, or `/model <name>` to switch. Every subsequent request
+Then in your client: `/model` to pick, or `/model <name>` to switch. Every subsequent request
 carries that model, and the router keeps exactly that model running.
 
 ## Web dashboard
@@ -476,7 +476,7 @@ it. If a model was already running, it's adopted and left alone.
 - **Watch**: `llm-router watch [--port N] [--lines N]` tails the router log.
   `llm-router watch --llm [--host H] [--port N] [--lines N]` tails the **active model's own**
   log (`<log_dir>/<safe_filename>.log`) and **auto-switches** to the new model's log whenever the
-  active model changes (via `llm-router switch` or hermes changing models). **Ctrl+C stops the
+  active model changes (via `llm-router switch` or the client changing models). **Ctrl+C stops the
   watcher only** — the router keeps running either way. Both modes require a **running** router
   on the target port: with none reachable, `watch` reports `cannot reach a router …` (a leftover
   log file from a stopped run is not tailed).
@@ -506,7 +506,7 @@ router if it crashes. Adjust the paths and the `--config` argument.
 ## Security
 
 Bind to `127.0.0.1` (default). If you expose it beyond localhost, set `router.api_key`
-and mirror it in the hermes provider's `api_key`.
+and mirror it in the client's `api_key`.
 
 ## Layout
 
@@ -553,7 +553,7 @@ read-only and never started or stopped by the tests. It asserts **27 checks**, i
 
 - per-model `context_length` + `reasoning_effort` are advertised on `GET /v1/models`
   (chat models only) and `/admin/status` (all models).
-- **embedding models are hidden from `GET /v1/models`** (hermes can't pick one) but are
+- **embedding models are hidden from `GET /v1/models`** (a client can't pick one) but are
   still switchable/routable by the router.
 - **`reasoning_effort`**: the model default is advertised, injected when the client omits
   it, and passed through when the client provides it.

@@ -118,7 +118,7 @@ class ModelManager:
         """
         if not ids:
             return None
-        # 1) exact match on the hermes-facing name or the upstream id
+        # 1) exact match on the exposed name or the upstream id
         for name, spec in self.specs.items():
             for lid in ids:
                 if lid == name or lid == spec.upstream_model:

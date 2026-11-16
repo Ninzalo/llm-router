@@ -13,7 +13,7 @@
 
 router:
   host: 127.0.0.1
-  port: 8787                 # the router's public port — point hermes at http://127.0.0.1:8787/v1
+  port: 8787                 # the router's public port — point your client at http://127.0.0.1:8787/v1
   api_key: null              # set a non-empty string to require a Bearer token on /v1
   default_model: my-chat     # model loaded on boot (a `name` in `models:` below)
   startup_timeout: 120       # seconds to wait for the default model to become ready
@@ -23,9 +23,9 @@ router:
   preload: true              # start the default model on boot (in the background)
 
 models:
-  - name: my-chat            # the name hermes sees in its /model picker
+  - name: my-chat            # the name shown in the /model picker
     upstream_model: my-chat  # the model id the backend actually wants (rewritten per request)
-    context_length: 64000    # advertised to hermes (hermes needs at least 64000 to accept a model)
+    context_length: 64000    # advertised via /v1/models (clients need at least 64000 to accept a model)
     reasoning_effort: medium # advertised + injected into the request when the client omits it
     kind: chat
     # The command that starts THIS model's backend (it must serve an OpenAI-compatible /v1).
@@ -33,7 +33,7 @@ models:
     command: splash serve --model my-model --host 0.0.0.0 --port 8080 --max-context 64000 --idle-release 1800
     env: {}                  # extra KEY=VALUE environment variables for the backend process
 
-  # An embedding model (optional). It is hidden from hermes's /model picker but is
+  # An embedding model (optional). It is hidden from the /model picker but is
   # still routable by the router via its name.
   # - name: my-embed
   #   upstream_model: my-embed

@@ -30,9 +30,9 @@ for _ in range(30):
         pass
     time.sleep(0.5)
 
-# Req 2: /v1/models lists the preconfigured CHAT models (the hermes picker source).
+# Req 2: /v1/models lists the preconfigured CHAT models (the /model picker source).
 # Embedding-only models (kind: embedding) are still router-managed but are NOT
-# offered here, so hermes can't pick one as its active chat model.
+# offered here, so a client can't pick one as its active chat model.
 r = httpx.get(V1 + "/models", timeout=5)
 ids = [m["id"] for m in r.json().get("data", [])]
 check("Req2  GET /v1/models returns chat models only (embedding model hidden)",
@@ -44,7 +44,7 @@ r2 = httpx.get(BASE + "/models", timeout=5)
 check("Req2  GET /models (root alias) works + hides embedding model",
       set(m["id"] for m in r2.json().get("data", [])) == {"qwen-local", "qwen-local-2", HF})
 
-# context_length + reasoning_effort are advertised per-model on /v1/models (hermes
+# context_length + reasoning_effort are advertised per-model on /v1/models (the client
 # reads them from here for custom endpoints); /admin/status still lists all models.
 rctx = httpx.get(V1 + "/models", timeout=5).json()
 ctx = {m["id"]: m.get("context_length") for m in rctx.get("data", [])}

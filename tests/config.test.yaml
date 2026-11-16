@@ -12,7 +12,7 @@ router:
   keep_inactive_stopped: true
 
 models:
-  - name: qwen-local            # hermes-facing id (what you type in /model)
+  - name: qwen-local            # the id you type in /model
     upstream_model: mock-a      # what gets sent to the backend
     context_length: 131072
     reasoning_effort: high

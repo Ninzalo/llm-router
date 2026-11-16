@@ -123,7 +123,7 @@ Next steps:
         llm-router check
   3. Start the router (background daemon; the default model loads in the background):
         llm-router run
-  4. Point hermes at it (see README -> "Wiring it into hermes-agent"):
+  4. Point your client at it (see README -> "Wiring it up (the custom OpenAI endpoint)"):
         base_url: http://127.0.0.1:8787/v1
   5. Open the web dashboard:
         llm-router dashboard

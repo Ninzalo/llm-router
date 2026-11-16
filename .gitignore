@@ -26,9 +26,6 @@ config.servecheck.yaml
 # --- user-specific launchd install (machine paths baked in) ---
 llm-router.plist
 
-# --- local hermes wiring snippet (references your base_url / model names) ---
-hermes.model_aliases.yaml
-
 # --- Node (UI-test dependency) ---
 node_modules/
 
