@@ -1053,7 +1053,7 @@ transparently proxies the OpenAI API (`/v1/chat/completions`, `/v1/embeddings`,
 | `models`             | list preconfigured models (name, kind, target, context, reasoning) |
 | `check`              | validate the config and print the resolved specs (no server) |
 | `config`             | open the config in `$EDITOR` (`--print` to just show its path) |
-| `dashboard`          | web dashboard: instances, LLMs, pg/tg rates, config editor, live logs |
+| `dashboard`          | web dashboard: instances, LLMs, pp/tg rates, config editor, live logs |
 | `dashboard stop`     | stop a running dashboard (the `-d` background one, or a foreground one) |
 
 Run `llm-router <command> --help` for the full markdown description + arguments
@@ -1320,7 +1320,7 @@ HELP["start"] = HELP["run"]   # hidden backward-compat alias for `run`
 HELP["dashboard"] = """# llm-router dashboard
 
 Serve the **web dashboard** for the router: running instances, their configured
-LLMs (with the active one labelled), current + average prompt/generation (pg/tg)
+LLMs (with the active one labelled), current + average prompt/generation (pp/tg)
 rates per instance and per LLM, a full config editor, and live log watching.
 
 The dashboard is its **own process** and **never auto-starts a router** — use the
@@ -1350,7 +1350,7 @@ it starts in the background; `llm-router dashboard stop` stops it. Use
 ## What's in the UI
 
 - **Overview** — running instances, their LLMs (active labelled), instance and
-  per-LLM current + average pg/tg rates. A "Run default instance" button starts
+  per-LLM current + average pp/tg rates. A "Run default instance" button starts
   the default config's instance if it isn't already running, and each instance
   card has a "Stop" button to stop just that instance.
 - **Run Instance** — start a new instance on a fresh port, reusing LLMs from the

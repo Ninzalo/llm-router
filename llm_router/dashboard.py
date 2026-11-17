@@ -7,7 +7,7 @@ router instances. It:
 * reads each instance's ``/admin/status`` (models + which one is active);
 * tails each model's log for timing lines — llama.cpp ``prompt eval time`` /
   ``eval time`` and splash-serve ``Done ... tok/s`` — and reports **current**
-  + **average** pg (prompt) / tg (generation) token rates, both per instance
+  + **average** pp (prompt) / tg (generation) token rates, both per instance
   and per running LLM;
 * offers a structured config editor (with a raw-YAML mode) for the default
   config, a "run a new instance" form, and a live log viewer (router logs +
@@ -32,6 +32,7 @@ import socket
 import subprocess
 import sys
 import time
+from collections import deque
 
 import httpx
 import yaml
@@ -60,7 +61,7 @@ _NUM_FIELD = r"[\d][\d,]*(?:\.\d+)?"
 def parse_rate_line(line: str):
     """Return a list of ``(kind, tokens_per_sec)`` for a timing line, else None.
 
-    ``kind`` is ``"prompt"`` (pg — prompt-processing speed) or ``"gen"``
+    ``kind`` is ``"prompt"`` (pp — prompt-processing speed) or ``"gen"``
     (tg — generation speed). Two log formats are recognised:
 
     * **splash serve** — the per-request ``Done`` line this project's models
@@ -135,36 +136,40 @@ def _parse_splash_done(low: str):
 
 
 class RateTracker:
-    """Tracks current + average pg/tg rates per model, persisting across restarts.
+    """Tracks current + average pp/tg rates per model, persisting across restarts.
 
-    Keys are arbitrary strings (``"<port>:<model>"``). For each model we tail
-    newly-appended bytes from its log and keep running sums. A model's log is
-    *appended* (never truncated) by the router, so those sums describe the
-    model's whole router-tracked lifetime.
+    pp = prompt-processing speed (new prompt tokens / time-to-first-token);
+    tg = token-generation speed (decode tokens/sec). Keys are arbitrary strings
+    (``"<port>:<model>"``). For each model we tail newly-appended bytes from its
+    log and keep the most recent ``_SAMPLE_CAP`` rate pairs (one per request); a
+    model's log is *appended* (never truncated) by the router.
 
-    To keep the averages from "disappearing" on a dashboard/router/model restart
-    (they must never reset unless a model was never started via the router), the
-    running state is persisted to ``<state_dir>/rates.json``, keyed by the log
-    file's real path. On first sight of a model in this process we adopt its
-    persisted state when one exists (so the average resumes where it left off)
-    and only seed fresh from the log tail (capped to the last ``_SEED_CAP``
-    bytes) when it was never tracked before. ``forget_stale`` drops in-memory
-    entries for stopped models, but ``flush`` only ever merges into the file, so
-    the persisted state is kept and a later restart resumes instead of resetting.
+    The pp/tg *averages* must never disappear on a model/router/dashboard restart
+    (and must survive a model switch — a stopped model keeps its average even
+    though it shows no current rate). They reset only for a model that was never
+    started via the router before. To guarantee that, each model's rate window is
+    persisted to ``<state_dir>/rates.json`` (keyed by the log file's real path);
+    the live *current* rates are deliberately not persisted. On first sight of a
+    model in a process we adopt its persisted window (so the average resumes
+    exactly where it left off). ``sample`` (running models) returns a live current
+    rate plus the average over the window; ``avg_snapshot`` (stopped models)
+    returns the average with an empty current.
     """
 
-    _FIELDS = ("pos", "pg_sum", "pg_n", "tg_sum", "tg_n", "cur_pg", "cur_tg")
+    _SAMPLE_CAP = 20   # most recent rate pairs kept per model (feeds the average)
+    _RECENT_CAP = 10   # most recent rates kept per instance (the hover table)
+    _PERSIST = ("pos", "samples")   # the only fields written to disk (no current)
 
     def __init__(self, state_dir: str | None = None):
         self._st: dict[str, dict] = {}
         self._state_dir = state_dir
         self._dirty = False
+        self._recent: dict[str, deque] = {}   # port -> most recent (model, pp, tg)
 
     def _fresh(self, key: str, pos: int) -> dict:
         return {
-            "pos": pos, "pg_sum": 0.0, "pg_n": 0,
-            "tg_sum": 0.0, "tg_n": 0,
-            "cur_pg": None, "cur_tg": None,
+            "pos": pos, "samples": [],
+            "cur_pp": None, "cur_tg": None,
         }
 
     # --------------------------------------------------------- persistence
@@ -173,7 +178,14 @@ class RateTracker:
         return os.path.join(self._state_dir, "rates.json")
 
     def _load_state(self, path_real: str):
-        """Load a model's persisted running state (or None if it was never tracked)."""
+        """Load a model's persisted rate window (or None if it was never tracked).
+
+        Returns a fresh state whose window is the persisted one; the live current
+        rates start empty (they are re-observed, not persisted). A pre-1.2.7 file
+        stored running sums instead of a window; that format is detected and
+        re-seeded from the log (pos reset to 0 so the whole appended history is
+        read once, rebuilding the last ``_SAMPLE_CAP`` pairs).
+        """
         if not self._state_dir:
             return None
         try:
@@ -184,16 +196,24 @@ class RateTracker:
         st = data.get(path_real) if isinstance(data, dict) else None
         if not isinstance(st, dict):
             return None
-        norm = self._fresh("", 0)
-        for k in self._FIELDS:
-            norm[k] = st[k]
-        return norm
+        samples = st.get("samples")
+        if not isinstance(samples, list):
+            # Old format (sums only) -> re-seed the window from the log.
+            return {"pos": 0, "samples": [], "cur_pp": None, "cur_tg": None}
+        pairs = [s for s in samples if isinstance(s, (list, tuple)) and len(s) == 2]
+        pairs = [[pp, tg] for pp, tg in pairs][-self._SAMPLE_CAP:]
+        try:
+            pos = max(0, int(st.get("pos", 0)))
+        except (TypeError, ValueError):
+            pos = 0
+        return {"pos": pos, "samples": pairs, "cur_pp": None, "cur_tg": None}
 
     def flush(self):
-        """Persist the running state of every tracked model.
+        """Persist every tracked model's rate window (pos + recent samples).
 
         Merges into the existing file (never deletes) so a model's averages
-        survive even after it stops or is dropped from the in-memory table.
+        survive even after it stops. Only ``_PERSIST`` fields are written — the
+        live current rates are deliberately not stored.
         """
         if not self._state_dir or not self._dirty:
             return
@@ -201,7 +221,7 @@ class RateTracker:
         for st in self._st.values():
             p = st.get("_path")
             if p:
-                updated[p] = {k: st[k] for k in self._FIELDS}
+                updated[p] = {k: st[k] for k in self._PERSIST}
         if not updated:
             self._dirty = False
             return
@@ -224,8 +244,14 @@ class RateTracker:
             pass
 
     # ------------------------------------------------------------- sampling
-    def sample(self, key: str, path: str):
-        """Read newly-appended lines from ``path`` and return a rate snapshot."""
+    def _tail(self, key: str, path: str):
+        """Adopt the model's state (or create it) and tail newly-appended bytes.
+
+        On first sight the persisted window is adopted (so the average resumes
+        across a restart); a pre-1.2.7 file (sums only) is re-seeded from the log
+        because its tail offset starts at 0. Returns the state, or None if the
+        log path is missing.
+        """
         if not path or not os.path.exists(path):
             return None
         try:
@@ -236,12 +262,16 @@ class RateTracker:
         if st is None:
             path_real = os.path.realpath(path)
             persisted = self._load_state(path_real)
-            st = persisted if persisted is not None else self._fresh(key, max(0, size - _SEED_CAP))
+            if persisted is not None:
+                st = persisted
+                st["pos"] = min(st["pos"], size)   # never read ahead of the file
+            else:
+                st = self._fresh(key, max(0, size - _SEED_CAP))
             st["_path"] = path_real
             self._st[key] = st
         if size < st["pos"]:
-            # Log rotated/truncated: keep the accumulated averages; just re-aim
-            # the read at the (new) tail so we don't double-count new content.
+            # Log rotated/truncated: keep the window; re-aim at the (new) tail so
+            # we don't double-count new content.
             st["pos"] = max(0, size - _SEED_CAP)
         if size > st["pos"]:
             try:
@@ -253,72 +283,121 @@ class RateTracker:
                 self._dirty = True
             except OSError:
                 pass
-        if st["pg_n"] == 0 and st["tg_n"] == 0:
-            return None
-        return {
-            "pg_current": round(st["cur_pg"], 2) if st["cur_pg"] is not None else None,
-            "tg_current": round(st["cur_tg"], 2) if st["cur_tg"] is not None else None,
-            "pg_avg": round(st["pg_sum"] / st["pg_n"], 2) if st["pg_n"] else None,
-            "tg_avg": round(st["tg_sum"] / st["tg_n"], 2) if st["tg_n"] else None,
-            "pg_n": st["pg_n"], "tg_n": st["tg_n"],
-        }
+        return st
+
+    def sample(self, key: str, path: str):
+        """Live rate snapshot for a running model: average over the window plus
+        the current rates (latest request observed in this process)."""
+        st = self._tail(key, path)
+        return self._snapshot(st) if st else None
 
     def _absorb(self, key: str, text: str):
         st = self._st[key]
+        port, _, model_name = key.partition(":")
+        recent = self._recent.setdefault(port, deque(maxlen=self._RECENT_CAP))
         for line in text.splitlines():
             rates = parse_rate_line(line)
             if not rates:
                 continue
+            pp = tg = None
             for kind, val in rates:
                 if kind == "prompt":
-                    st["pg_sum"] += val; st["pg_n"] += 1; st["cur_pg"] = val
+                    pp = val
                 else:
-                    st["tg_sum"] += val; st["tg_n"] += 1; st["cur_tg"] = val
+                    tg = val
+            if pp is None and tg is None:
+                continue
+            st["samples"].append([pp, tg])
+            if len(st["samples"]) > self._SAMPLE_CAP:
+                del st["samples"][: len(st["samples"]) - self._SAMPLE_CAP]
+            if pp is not None:
+                st["cur_pp"] = pp
+            if tg is not None:
+                st["cur_tg"] = tg
+            recent.append({"model": model_name, "pp": pp, "tg": tg})
 
-    def forget_stale(self, live_keys):
-        live = set(live_keys)
-        for k in list(self._st):
-            if k not in live:
-                self._st.pop(k, None)
+    def _snapshot(self, st: dict) -> dict | None:
+        """Rate snapshot for a state: average over the recent window + the live
+        current rates (empty until a request is observed in this process)."""
+        pp_vals = [s[0] for s in st["samples"] if s[0] is not None]
+        tg_vals = [s[1] for s in st["samples"] if s[1] is not None]
+        if not pp_vals and not tg_vals:
+            return None
+        return {
+            "pp_current": round(st["cur_pp"], 2) if st["cur_pp"] is not None else None,
+            "tg_current": round(st["cur_tg"], 2) if st["cur_tg"] is not None else None,
+            "pp_avg": round(sum(pp_vals) / len(pp_vals), 2) if pp_vals else None,
+            "tg_avg": round(sum(tg_vals) / len(tg_vals), 2) if tg_vals else None,
+            "pp_n": len(pp_vals), "tg_n": len(tg_vals),
+        }
+
+    def avg_snapshot(self, key: str, path: str):
+        """Average-rate snapshot for a model that may be stopped: the average over
+        its persisted window, with an *empty* current. Re-seeds from the log if
+        the model was never tracked in this process. Returns None only if the
+        model was never started via the router (no window exists anywhere)."""
+        st = self._tail(key, path)
+        if st is None:
+            return None
+        snap = self._snapshot(st)
+        if snap:
+            snap["pp_current"] = None
+            snap["tg_current"] = None
+        return snap
+
+    def recent(self, port: str, limit: int | None = None):
+        """Most recent (model, pp, tg) rate entries for an instance (hover table)."""
+        d = self._recent.get(port)
+        if not d:
+            return []
+        items = list(d)
+        return items[-limit:] if limit else items
 
     def aggregate_avg(self, keys):
-        """Instance-level average across a set of keys (all running models of one
-        instance). Pools the raw running sums so the mean is weighted by each
-        model's request count. Returns ``{"pg_avg","tg_avg","pg_n","tg_n"}`` or
-        None if none of the keys has any samples yet."""
-        pg_sum = pg_n = tg_sum = tg_n = 0.0
+        """Instance-level average pooled across the recent windows of ``keys``
+        (every model of the instance that has produced rates, running or stopped).
+        Returns ``{"pp_avg","tg_avg","pp_n","tg_n"}`` or None if no samples yet."""
+        pp_vals: list[float] = []
+        tg_vals: list[float] = []
         for k in keys:
             st = self._st.get(k)
             if not st:
                 continue
-            pg_sum += st["pg_sum"]; pg_n += st["pg_n"]
-            tg_sum += st["tg_sum"]; tg_n += st["tg_n"]
-        if pg_n == 0 and tg_n == 0:
+            for s in st["samples"]:
+                if s[0] is not None:
+                    pp_vals.append(s[0])
+                if s[1] is not None:
+                    tg_vals.append(s[1])
+        if not pp_vals and not tg_vals:
             return None
         return {
-            "pg_avg": round(pg_sum / pg_n, 2) if pg_n else None,
-            "tg_avg": round(tg_sum / tg_n, 2) if tg_n else None,
-            "pg_n": pg_n, "tg_n": tg_n,
+            "pp_avg": round(sum(pp_vals) / len(pp_vals), 2) if pp_vals else None,
+            "tg_avg": round(sum(tg_vals) / len(tg_vals), 2) if tg_vals else None,
+            "pp_n": len(pp_vals), "tg_n": len(tg_vals),
         }
 
 
 def _router_rate(active_rate, tracker, inst_keys):
     """Build the instance (router) rate object.
 
-    The *current* tg/pg come from the active (currently-running) model; the
-    *average* tg/pg are pooled across ALL running models of the instance (not
-    just the active one). Returns None when there is no active-model rate.
+    The *current* pp/tg come from the active (currently-running) model (empty
+    until a request is observed for it); the *average* pp/tg are pooled across
+    ALL models of the instance that have produced rates (running or stopped —
+    their windows persist). The average is therefore independent of the active
+    model and survives a model switch even when the newly-active model has no
+    rate yet. Returns None only when there is neither an active-model rate nor
+    any pooled window.
     """
-    if not active_rate:
-        return None
     agg = tracker.aggregate_avg(inst_keys) or {}
+    if not active_rate and agg.get("pp_avg") is None and agg.get("tg_avg") is None:
+        return None
     return {
-        "pg_current": active_rate.get("pg_current"),
-        "tg_current": active_rate.get("tg_current"),
-        "pg_avg": agg.get("pg_avg"),
+        "pp_current": (active_rate or {}).get("pp_current"),
+        "tg_current": (active_rate or {}).get("tg_current"),
+        "pp_avg": agg.get("pp_avg"),
         "tg_avg": agg.get("tg_avg"),
-        "pg_n": agg.get("pg_n", active_rate.get("pg_n")),
-        "tg_n": agg.get("tg_n", active_rate.get("tg_n")),
+        "pp_n": agg.get("pp_n") or (active_rate or {}).get("pp_n"),
+        "tg_n": agg.get("tg_n") or (active_rate or {}).get("tg_n"),
     }
 
 
@@ -415,7 +494,6 @@ def build_dashboard_app() -> FastAPI:
         insts = _running_instances()
         inst_ports = {i["port"] for i in insts}
         out = []
-        live_keys = set()
         for inst in insts:
             port = inst["port"]
             host = inst["host"]
@@ -443,15 +521,14 @@ def build_dashboard_app() -> FastAPI:
                 active_rate = None
                 inst_keys = []
                 for m in status.get("models", []):
+                    key = f"{port}:{m['name']}"
                     if m.get("running"):
-                        key = f"{port}:{m['name']}"
-                        live_keys.add(key)
                         llm_rate = tracker.sample(key, m.get("log_path"))
-                        inst_keys.append(key)
                     else:
-                        llm_rate = None
+                        llm_rate = tracker.avg_snapshot(key, m.get("log_path"))
                     if m.get("active"):
                         active_rate = llm_rate
+                    inst_keys.append(key)
                     entry["models"].append({
                         "name": m["name"], "kind": m.get("kind"),
                         "running": m.get("running"), "active": m.get("active"),
@@ -460,13 +537,13 @@ def build_dashboard_app() -> FastAPI:
                         "base_url": m.get("base_url"), "log_path": m.get("log_path"),
                         "llm": llm_rate,
                     })
-                # Instance (router) rate: current tg/pg from the active (running)
-                # model; average tg/pg pooled across ALL running models of the
-                # instance (not just the active one).
+                # Instance (router) rate: current pp/tg from the active (running)
+                # model; average pp/tg pooled across ALL models of the instance
+                # that have produced rates (their windows persist after stop).
                 entry["router"] = _router_rate(active_rate, tracker, inst_keys)
+                entry["router_recent"] = tracker.recent(str(port))
             out.append(entry)
-        tracker.forget_stale(live_keys)
-        tracker.flush()  # persist running averages so they survive restarts
+        tracker.flush()  # persist rate windows so averages survive restarts
         default_running = any(i["port"] == cfg_port and i["reached"] for i in out)
         return {
             "default": {

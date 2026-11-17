@@ -113,7 +113,7 @@ llm-router dashboard     # opens http://127.0.0.1:8799 in your browser
 | **Robust stop** | `stop` stops the model even when it is still loading — a model in its startup window is a real process and is always stopped on shutdown (regression-tested). |
 | **Quiet logging** | No per-request `httpx`/`httpcore` chatter, no duplicate startup lines. Per-model logs + a router log that rotates on each `run`. |
 | **Watch** | `watch` tails the router log; `watch --llm` tails the **active model's own** log and **auto-switches** to the new model's log when the active model changes. Both require a **running** router (else `cannot reach a router …`). Ctrl+C stops the watcher, never the router. |
-| **Web dashboard** | `llm-router dashboard` serves a self-contained web UI: running instances (each with a one-click **Stop** button) + their LLMs (active labelled), current + average pg/tg rates per instance and per LLM, a structured **and** raw-YAML config editor, live log watching with a **Watch / Stop-watching** toggle, and a dark/light theme. Opens your browser automatically (`--no-browser` to skip); Ctrl+C stops it immediately. It is its own process and **never auto-starts a router** (one-click button to start the default). |
+| **Web dashboard** | `llm-router dashboard` serves a self-contained web UI: running instances (each with a one-click **Stop** button) + their LLMs (active labelled), current + average pp/tg rates per instance and per LLM, a structured **and** raw-YAML config editor, live log watching with a **Watch / Stop-watching** toggle, and a dark/light theme. Opens your browser automatically (`--no-browser` to skip); Ctrl+C stops it immediately. It is its own process and **never auto-starts a router** (one-click button to start the default). |
 | **Help** | `llm-router --help` and `llm-router <cmd> --help` print a full markdown description + arguments for the command. |
 
 ## The CLI
@@ -396,7 +396,7 @@ for a detached run.
 ### What's in the UI
 
 - **Overview** — every running instance with its configured LLMs; the **active** model is
-  labelled. Shows **current** and **average** prompt (pg) / generation (tg) rate **per
+  labelled. Shows **current** and **average** prompt (pp) / generation (tg) rate **per
   instance** (i.e. its active model — an instance-level figure, not a per-LLM measurement)
   **and per LLM** (each model's own, read from its log). A red **Stop** button stops that
   running instance (SIGTERM, then SIGKILL). A **"Run default instance"** button starts the
@@ -413,7 +413,7 @@ for a detached run.
   file as text. Saves are **validated before writing** and a `.bak` backup of the previous
   config is kept.
 - **Logs** — list every running instance's router log and every running LLM's own log.
-  **Watch** streams any of them live (the LLM log is where the pg/tg timing lines come from);
+  **Watch** streams any of them live (the LLM log is where the pp/tg timing lines come from);
   once started, the button turns into a red **Stop watching** — click it again to stop.
   Stopping detaches the stream without killing anything.
 - **Dark/light theme** (persisted; follows the OS by default). The less-obvious controls carry
@@ -526,7 +526,7 @@ llm-router/
     __main__.py          # CLI: run/serve/watch/stop/stop-model/switch/status/models/check/config/dashboard + markdown --help
   config.yaml            # REAL config (your splash/llama) — NOT committed; see config.example.yaml
   tests/                 # ALL test code + fixtures (mock-only, isolated 18xxx ports; run in CI)
-    mock_llm.py            # fake OpenAI backend (supports --delay, logs pg/tg timing at INFO)
+    mock_llm.py            # fake OpenAI backend (supports --delay, logs pp/tg timing at INFO)
     config.test.yaml       # TEST config (mocks, isolated ports 18xxx)
     config.adopt.yaml      # TEST config for the external-detection suite (mock, isolated port)
     config.dash.yaml       # DASHBOARD TEST config (mocks, isolated ports 185xx)
@@ -587,7 +587,7 @@ resolve `dashboard.html` and `config.dash.yaml` relative to themselves):
 
 - a **backend end-to-end driver** (`dash_e2e.py`) boots mock backends + a router + the
   dashboard and asserts, over HTTP: instance discovery, the active-LLM label, **current and
-  average pg/tg rates per instance and per LLM** (populated from the mock backends' timing
+  average pp/tg rates per instance and per LLM** (populated from the mock backends' timing
   lines), run-default, **run-instance** (a new instance on a fresh port reusing a subset of
   the config's LLMs), **stop-instance** (`POST /api/instances/stop` — stops only the target
   port; the other instance stays up; 400 for a bad port, 404 for none running), structured

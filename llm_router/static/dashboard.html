@@ -69,6 +69,15 @@
   .tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--muted);color:#fff;font-size:10px;font-weight:700;cursor:help;vertical-align:middle;margin-left:5px;line-height:1;flex:none}
   [data-theme="dark"] .tip{color:var(--bg)}
   .tipbox{display:none;position:fixed;max-width:280px;background:var(--tipbg);color:var(--tipfg);padding:8px 11px;border-radius:8px;font-size:12.5px;line-height:1.45;z-index:100;box-shadow:0 6px 22px rgba(0,0,0,.4);pointer-events:none}
+  /* floating "last rates" window shown when hovering the router's Avg pp / Avg tg */
+  .ratebox{display:none;position:fixed;z-index:110;background:var(--tipbg);color:var(--tipfg);padding:9px 11px;border-radius:8px;box-shadow:0 6px 22px rgba(0,0,0,.4);pointer-events:none;font-size:12px;min-width:190px;max-width:320px}
+  .ratebox .rb-title{font-weight:600;margin-bottom:6px;color:var(--tipfg);opacity:.85}
+  .ratebox table{border-collapse:collapse;width:100%}
+  .ratebox th,.ratebox td{text-align:right;padding:2px 10px 2px 0;white-space:nowrap}
+  .ratebox th:first-child,.ratebox td:first-child{text-align:left;padding-right:14px}
+  .ratebox thead th{border-bottom:1px solid rgba(128,128,128,.4);font-weight:600}
+  .ratebox tbody tr:last-child td{font-weight:700}
+  .ratebox .rb-empty{color:var(--tipfg);opacity:.7}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   label.field{display:block;font-size:12px;color:var(--muted);margin-bottom:2px}
   input,select,textarea{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:7px 9px;font-size:13px;font-family:inherit}
@@ -227,6 +236,9 @@ function initTheme(){ let t=null; try{t=localStorage.getItem('lr-theme');}catch(
   applyTheme(t); }
 $('#themeBtn').addEventListener('click', ()=>{ const cur=document.documentElement.getAttribute('data-theme'); applyTheme(cur==='dark'?'light':'dark'); });
 
+/* instance rate data for the "last rates" hover window (port -> recent rates) */
+const rateRecent = {};
+
 /* ------------------------------ tooltips ------------------------------ */
 (function(){
   const box = document.createElement('div'); box.className='tipbox'; document.body.appendChild(box);
@@ -248,6 +260,37 @@ $('#themeBtn').addEventListener('click', ()=>{ const cur=document.documentElemen
   $$('.tip').forEach(el=>{ el.tabIndex=0; });   // keep pre-existing (static) tips keyboard-focusable
 })();
 
+/* ------------------------- rate "last rates" hover window ------------------------- */
+/* Hovering the router's "Avg pp" / "Avg tg" cells shows a floating table of the
+   instance's most recent rates (model | pp | tg), newest last. The data is read
+   from rateRecent (port -> rates), refreshed on every render. */
+(function(){
+  const box = document.createElement('div'); box.className='ratebox'; document.body.appendChild(box);
+  const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const num = v => (v==null) ? '\u2014' : Number(v).toFixed(2);
+  function buildTable(recent){
+    if(!recent || !recent.length) return '<div class="rb-empty">No recent rates yet.</div>';
+    const rows = recent.map(e=>`<tr><td>${esc(e.model)}</td><td>${num(e.pp)}</td><td>${num(e.tg)}</td></tr>`).join('');
+    return `<div class="rb-title">Last ${recent.length} rates</div>
+      <table><thead><tr><th>model</th><th>pp</th><th>tg</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  function show(el){
+    const recent = rateRecent[el.getAttribute('data-port')] || [];
+    box.innerHTML = buildTable(recent);
+    box.style.display='block';
+    const r=el.getBoundingClientRect(), bw=box.offsetWidth, bh=box.offsetHeight;
+    let left=Math.max(8, Math.min(r.left + r.width/2 - bw/2, window.innerWidth - bw - 8));
+    let top=r.bottom + 8; if(top + bh > window.innerHeight - 8) top = r.top - bh - 8;
+    box.style.left=left+'px'; box.style.top=Math.max(8,top)+'px';
+  }
+  function hide(){ box.style.display='none'; }
+  const rateOf=e=> (e.target && e.target.closest ? e.target.closest('.rate-hover') : null);
+  document.addEventListener('mouseover', e=>{ const t=rateOf(e); if(t) show(t); });
+  document.addEventListener('mousemove', e=>{ const t=rateOf(e); if(t) show(t); });   // stays in sync across the 5s re-render
+  document.addEventListener('mouseout',  e=>{ if(rateOf(e)) hide(); });
+  document.addEventListener('scroll', hide, true);
+})();
+
 /* -------------------------------- tabs -------------------------------- */
 $$('.tabs button').forEach(b=>b.addEventListener('click',()=>{
   $$('.tabs button').forEach(x=>x.classList.remove('active')); b.classList.add('active');
@@ -263,13 +306,19 @@ async function jsend(u, body, method){ const r=await fetch(u,{method:method||'PO
 function showStatus(el, ok, msg){ el.className='status '+(ok?'ok':'err'); el.textContent=msg; }
 
 /* ------------------------------ overview ------------------------------ */
-function metricBlock(r){
-  const m=(k,label)=>`<div class="metric"><div class="k">${label}</div><div class="v">${fmt(r&&r[k])}</div></div>`;
+function metricBlock(r, port){
+  // The router's "Avg pp" / "Avg tg" cells are hoverable: they carry data-port so
+  // the rate-hover window can look up that instance's most recent rates.
+  const m=(k,label,hover)=>{
+    const cls = hover ? 'metric rate-hover' : 'metric';
+    const attr = hover ? ` data-port="${port}"` : '';
+    return `<div class="${cls}"${attr}><div class="k">${label}</div><div class="v">${fmt(r&&r[k])}</div></div>`;
+  };
   return `<div class="grid" style="margin-bottom:6px">
-    ${m('pg_current','Current prompt')}
-    ${m('tg_current','Current gen')}
-    ${m('pg_avg','Avg prompt')}
-    ${m('tg_avg','Avg gen')}
+    ${m('pp_current','Current pp',false)}
+    ${m('tg_current','Current tg',false)}
+    ${m('pp_avg','Avg pp',true)}
+    ${m('tg_avg','Avg tg',true)}
   </div>`;
 }
 function statusBadge(m){
@@ -289,15 +338,16 @@ function renderInstance(inst){
     ${inst.active? `<span class="badge active"><span class="dot"></span>active: ${inst.active}</span>` : '<span class="hint">no active model</span>'}
     <button class="btn danger sm" data-stop="${inst.port}">■ Stop</button>
   </div>`;
+  rateRecent[inst.port] = inst.router_recent || [];
   html += `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Router (instance) rate</div>`;
-  html += metricBlock(inst.router);
+  html += metricBlock(inst.router, inst.port);
   if(inst.models.length){
     html += `<table><thead><tr>
       <th>Model</th>
       <th>Kind</th><th>Status</th><th>Backend</th>
-      <th>Cur pg</th>
+      <th>Cur pp</th>
       <th>Cur tg</th>
-      <th>Avg pg</th>
+      <th>Avg pp</th>
       <th>Avg tg</th>
     </tr></thead><tbody>`;
     inst.models.forEach(m=>{
@@ -307,9 +357,9 @@ function renderInstance(inst){
         <td><span class="badge kind">${m.kind||'chat'}</span></td>
         <td>${statusBadge(m)}${m.external?' <span class="hint">external</span>':''}</td>
         <td class="dim">${m.port?(':'+m.port):''}${m.pid?' · pid '+m.pid:''}</td>
-        <td class="num">${fmt(llm.pg_current)}</td>
+        <td class="num">${fmt(llm.pp_current)}</td>
         <td class="num">${fmt(llm.tg_current)}</td>
-        <td class="num">${fmt(llm.pg_avg)}</td>
+        <td class="num">${fmt(llm.pp_avg)}</td>
         <td class="num">${fmt(llm.tg_avg)}</td>
       </tr>`;
     });

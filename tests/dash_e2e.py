@@ -110,7 +110,7 @@ try:
     check("router run rc==0", rc == 0, out)
     check("router :18590 /health up", wait_up(f"http://127.0.0.1:{ROUTER1}/health", tries=40))
 
-    # ---- 2. make a few chat requests -> generate pg/tg timing lines ----
+    # ---- 2. make a few chat requests -> generate pp/tg timing lines ----
     print("== send chat requests through :18590 (populate rates) ==")
     body = {"model": "qwen-local", "messages": [{"role": "user", "content": "say hi"}]}
     for _ in range(4):
@@ -134,8 +134,8 @@ try:
     check("/ returns 200", st == 200)
     check("/ is text/html", "html" in (hdrs.get("content-type") or hdrs.get("Content-Type") or ""), str(hdrs))
     for marker in ["llm-router", "Overview", "Run Instance", "Config", "Logs",
-                   "data-tip", "data-theme", "Run default instance", "pg", "tg",
-                   "Raw YAML", "Watch", "structured"]:
+                   "data-tip", "data-theme", "Run default instance", "pp", "tg",
+                   "Raw YAML", "Watch", "structured", "rate-hover", "router_recent"]:
         check(f"UI contains {marker!r}", marker in html)
 
     # ---- 5. GET /health ----
@@ -164,19 +164,20 @@ try:
     check("qwen-local active label", q1.get("active") is True, str(q1)[:200])
     check("qwen-local running", q1.get("running") is True, str(q1.get("running")))
     llm = q1.get("llm") or {}
-    check("qwen-local llm has pg_current", llm.get("pg_current") is not None, str(llm))
+    check("qwen-local llm has pp_current", llm.get("pp_current") is not None, str(llm))
     check("qwen-local llm has tg_current", llm.get("tg_current") is not None, str(llm))
-    check("qwen-local llm has pg_avg", llm.get("pg_avg") is not None, str(llm))
+    check("qwen-local llm has pp_avg", llm.get("pp_avg") is not None, str(llm))
     check("qwen-local llm has tg_avg", llm.get("tg_avg") is not None, str(llm))
+    check("qwen-local llm exposes the recent-rate window for the hover table", isinstance(i1.get("router_recent"), list), str(i1.get("router_recent")))
     r1 = i1.get("router") or {}
-    check("instance router has pg_current (active model)", r1.get("pg_current") is not None, str(r1))
+    check("instance router has pp_current (active model)", r1.get("pp_current") is not None, str(r1))
     check("instance router has tg_avg", r1.get("tg_avg") is not None, str(r1))
-    # current tg/pg come from the active (running) model...
-    check("router pg_current == active model pg_current", r1.get("pg_current") == llm.get("pg_current"), f"router={r1} active={llm}")
+    # current tg/pp come from the active (running) model...
+    check("router pp_current == active model pp_current", r1.get("pp_current") == llm.get("pp_current"), f"router={r1} active={llm}")
     check("router tg_current == active model tg_current", r1.get("tg_current") == llm.get("tg_current"), f"router={r1} active={llm}")
     # ...and with only ONE running model on :18590, the pooled instance average
     # equals that model's own average (the multi-model pooling is unit-tested).
-    check("router pg_avg == active model pg_avg (1 running model)", r1.get("pg_avg") == llm.get("pg_avg"), f"router={r1} active={llm}")
+    check("router pp_avg == active model pp_avg (1 running model)", r1.get("pp_avg") == llm.get("pp_avg"), f"router={r1} active={llm}")
     check("router tg_avg == active model tg_avg (1 running model)", r1.get("tg_avg") == llm.get("tg_avg"), f"router={r1} active={llm}")
     # persistence: the live dashboard must have written the running-average state
     # to the (fresh) isolated state dir so the averages survive a dashboard/router
@@ -186,6 +187,31 @@ try:
     emb = models1.get("embed-local", {})
     check("embed-local NOT active", emb.get("active") is not True, str(emb)[:150])
     check("suggested_port present", isinstance(inst.get("suggested_port"), int), str(inst.get("suggested_port")))
+
+    # ---- 6b. model switch: switch away from qwen-local; its AVERAGE must survive ----
+    # The core v1.2.7 behaviour, exercised against the LIVE dashboard+router: a
+    # switched-AWAY (stopped) model keeps its average pp/tg, its current goes
+    # empty, and the router (instance) average stays pooled across all models.
+    print("== switch qwen-local -> qwen-second; the switched-away average must survive ==")
+    st, body = http_err(f"http://127.0.0.1:{ROUTER1}/admin/switch", "POST", {"model": "qwen-second"}, timeout=60)
+    check("admin/switch -> 200", st == 200, f"st={st} {body[:120]}")
+    time.sleep(1.5)
+    st, body, _ = http(f"http://127.0.0.1:{DASH}/api/instances")
+    i1s = {i["port"]: i for i in json.loads(body)["instances"]}.get(ROUTER1, {})
+    check("after switch active==qwen-second", i1s.get("active") == "qwen-second", str(i1s.get("active")))
+    models1s = {m["name"]: m for m in i1s.get("models", [])}
+    llms = (models1s.get("qwen-local", {}) or {}).get("llm") or {}
+    check("switched-AWAY qwen-local keeps its pp_avg (NOT null)", llms.get("pp_avg") is not None, str(llms))
+    check("switched-AWAY qwen-local keeps its tg_avg (NOT null)", llms.get("tg_avg") is not None, str(llms))
+    check("switched-AWAY qwen-local current is empty (it is stopped)",
+          llms.get("pp_current") is None and llms.get("tg_current") is None, str(llms))
+    rs = i1s.get("router") or {}
+    check("router pp_avg/tg_avg still present after the switch (pooled across models)",
+          rs.get("pp_avg") is not None and rs.get("tg_avg") is not None, str(rs))
+    # switch back so the later run-instance step (which also uses qwen-second /
+    # mock-c :18503) does not collide with a still-running copy on :18590.
+    http_err(f"http://127.0.0.1:{ROUTER1}/admin/switch", "POST", {"model": "qwen-local"}, timeout=60)
+    time.sleep(1.5)
 
     # ---- 7. GET /api/config ----
     print("== GET /api/config ==")

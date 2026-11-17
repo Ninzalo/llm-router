@@ -21,12 +21,16 @@ function makeData(running) {
       instances: [{
         port: 18590, base_url: "http://127.0.0.1:18590", reached: true, pid: 12345,
         sources: ["pidfile"], active: "qwen-local",
-        router: { pg_current: 21.5, tg_current: 101.2, pg_avg: 22.1, tg_avg: 99.8 },
+        router: { pp_current: 21.5, tg_current: 101.2, pp_avg: 22.1, tg_avg: 99.8 },
+        router_recent: [
+          { model: "qwen-local", pp: 21.5, tg: 101.2 },
+          { model: "qwen-local", pp: 22.1, tg: 99.8 }
+        ],
         models: [
           { name: "qwen-local", kind: "chat", external: true, port: 18501, pid: 111, active: true, running: true,
-            llm: { pg_current: 21.5, tg_current: 101.2, pg_avg: 22.1, tg_avg: 99.8 } },
+            llm: { pp_current: 21.5, tg_current: 101.2, pp_avg: 22.1, tg_avg: 99.8 } },
           { name: "embed-local", kind: "embedding", external: true, port: 18502, pid: 222, active: false, running: false,
-            llm: { pg_current: null, tg_current: null, pg_avg: null, tg_avg: null } }
+            llm: { pp_current: null, tg_current: null, pp_avg: null, tg_avg: null } }
         ]
       }],
       suggested_port: 18591, version: "0.1"
@@ -132,10 +136,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("card shows :18590", /:18590/.test(card.textContent));
   check("card shows active model qwen-local", /active: qwen-local/.test(card.textContent));
   check("model table has qwen-local row", /qwen-local/.test(d.querySelector("#instances table").textContent));
-  check("model table shows current pg 21.50", /21\.50/.test(card.textContent));
+  check("model table shows current pp 21.50", /21\.50/.test(card.textContent));
   check("model table shows avg tg 99.80", /99\.80/.test(card.textContent));
   check("router metric block present", d.querySelectorAll("#instances .metric").length === 4);
   check("task1: router rate block renders values (not —)", (()=>{ const g=card.querySelector(".grid"); return g && /101\.2/.test(g.textContent) && /22\.10/.test(g.textContent) && !/—/.test(g.textContent); })());
+  // ---- Rate "last rates" hover window: hovering the router's Avg pp / Avg tg
+  // reveals a floating table (model | pp | tg) of the recent rates. ----
+  const hovers = Array.from(d.querySelectorAll('#instances .metric.rate-hover'));
+  check("router Avg pp/tg cells are hoverable (.rate-hover, data-port=18590)", hovers.length === 2 && hovers.every(h => h.getAttribute('data-port') === '18590'), "count=" + hovers.length);
+  const rateboxEl = d.querySelector('.ratebox');
+  check("ratebox floating window is in the DOM", !!rateboxEl);
+  if (rateboxEl) {
+    hovers[0].dispatchEvent(new w.MouseEvent('mouseover', { bubbles: true }));
+    check("hover Avg pp -> ratebox shows the last-rates table",
+      rateboxEl.style.display === 'block' && /model/.test(rateboxEl.textContent) && /pp/.test(rateboxEl.textContent) && /tg/.test(rateboxEl.textContent),
+      "display=" + rateboxEl.style.display + " html=" + rateboxEl.innerHTML);
+    check("ratebox lists the recent rates (qwen-local 21.50 / 101.20)", /qwen-local/.test(rateboxEl.textContent) && /21\.50/.test(rateboxEl.textContent) && /101\.20/.test(rateboxEl.textContent), rateboxEl.innerHTML);
+    hovers[0].dispatchEvent(new w.MouseEvent('mouseout', { bubbles: true }));
+    check("mouseout hides the ratebox", rateboxEl.style.display === 'none', "display=" + rateboxEl.style.display);
+  }
   check("embedding row present", /embed-local/.test(card.textContent));
   const activeBadge = d.querySelector('#instances .badge.active');
   check("task1: active badge itself carries no ? tooltip", !!activeBadge && activeBadge.querySelectorAll('.tip').length === 0);
@@ -334,9 +353,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       sources: ["pidfile"], active: "qwen-q4km",
       models: [
         { name: "qwen-q4km", kind: "chat", external: true, port: 18095, pid: null, active: true, running: true,
-          llm: { pg_current: null, tg_current: null, pg_avg: null, tg_avg: null } },
+          llm: { pp_current: null, tg_current: null, pp_avg: null, tg_avg: null } },
         { name: "qwen-q4kxl", kind: "chat", external: false, port: 18095, pid: null, active: false, running: false,
-          llm: { pg_current: null, tg_current: null, pg_avg: null, tg_avg: null } }
+          llm: { pp_current: null, tg_current: null, pp_avg: null, tg_avg: null } }
       ]
     }],
     suggested_port: 18796, version: "0.1"
@@ -369,7 +388,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   D.instances.instances = [
     { port: 18590, base_url: "http://127.0.0.1:18590", reached: true, pid: 12345, sources: ["pidfile"], active: "qwen-local",
       models: [ { name: "qwen-local", kind: "chat", external: false, port: 18501, pid: 111, active: true, running: true,
-        llm: { pg_current: null, tg_current: null, pg_avg: null, tg_avg: null } } ] }
+        llm: { pp_current: null, tg_current: null, pp_avg: null, tg_avg: null } } ] }
   ];
   await domD.window.eval("refreshOverview()");
   await sleep(400);   // let the 300ms fade-out timer finish so the pop-up leaves the flow
