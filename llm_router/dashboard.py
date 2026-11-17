@@ -5,9 +5,10 @@ router instances. It:
 
 * discovers running router instances (pidfiles in the state dir + a `ps` scan);
 * reads each instance's ``/admin/status`` (models + which one is active);
-* tails each model's log file for llama.cpp-style ``prompt eval time`` /
-  ``eval time`` lines and reports **current** + **average** pg (prompt) / tg
-  (generation) token rates, both per instance and per running LLM;
+* tails each model's log for timing lines — llama.cpp ``prompt eval time`` /
+  ``eval time`` and splash-serve ``Done ... tok/s`` — and reports **current**
+  + **average** pg (prompt) / tg (generation) token rates, both per instance
+  and per running LLM;
 * offers a structured config editor (with a raw-YAML mode) for the default
   config, a "run a new instance" form, and a live log viewer (router logs +
   each instance's LLM log).
@@ -50,20 +51,44 @@ _SEED_CAP = 5 * 1024 * 1024   # at most this many bytes are read when first seed
 
 
 # --------------------------------------------------------------- rate parsing
-_TOK_RE = re.compile(r"([\d.]+)\s*(?:tokens?/sec|tok/s)", re.IGNORECASE)
+_TOK_RE = re.compile(r"([\d.]+)\s*(?:tokens?/sec|t(?:o(?:k)?)?/s)", re.IGNORECASE)
+# A field number that may carry thousands separators, e.g. "32,226" or "1.5".
+_NUM_FIELD = r"[\d][\d,]*(?:\.\d+)?"
 
 
 def parse_rate_line(line: str):
-    """Return ``(kind, tokens_per_sec)`` for a llama.cpp-style timing line.
+    """Return a list of ``(kind, tokens_per_sec)`` for a timing line, else None.
 
     ``kind`` is ``"prompt"`` (pg — prompt-processing speed) or ``"gen"``
-    (tg — generation speed). A line is a *prompt* line if it mentions "prompt";
-    a *generation* line if it mentions "eval"/"generation" but not "prompt".
-    Returns ``None`` for lines that carry no rate.
+    (tg — generation speed). Two log formats are recognised:
+
+    * **splash serve** — the per-request ``Done`` line this project's models
+      emit::
+
+          13:24:11 Done · request 1 · input 32,226 · cached 0 · output 118 ·
+          tools 15·5217171e · TTFT 54.1s · 46.2 tok/s · 6.2 tok/cycle
+
+      yields ``gen = 46.2`` (the logged decode rate) and
+      ``prompt = (32,226 - 0) / 54.1`` (new prompt tokens / time-to-first-token).
+    * **llama.cpp** — per-iteration lines::
+
+          prompt eval time = X ms / N tokens ( ... T tokens/sec)   -> prompt
+          eval time = X ms / N tokens ( ... T tokens/sec)          -> gen
+
+      (both the modern ``tokens/sec`` and legacy ``t/s`` rate spellings).
+
+    Returns ``None`` for a line that carries no rate.
     """
     low = line.lower()
-    if "tokens/sec" not in low and "tok/s" not in low:
-        return None
+
+    # splash serve: a per-request "Done" line carrying a tok/s rate plus the
+    # (input / cached / TTFT) fields needed to derive the prompt rate.
+    if "tok/s" in low and "done" in low:
+        return _parse_splash_done(low)
+
+    # llama.cpp-style per-iteration line: a "prompt" / "eval" / "generation"
+    # line carrying a rate the regex recognises (tokens/sec, token/sec,
+    # tok/s, t/s). No rate present -> None.
     if "prompt" in low:
         kind = "prompt"
     elif "eval" in low or "generation" in low:
@@ -74,9 +99,38 @@ def parse_rate_line(line: str):
     if not matches:
         return None
     try:
-        return kind, float(matches[-1])
+        return [(kind, float(matches[-1]))]
     except ValueError:
         return None
+
+
+def _parse_splash_done(low: str):
+    """Parse a splash ``Done`` line into ``[(kind, tok/s), ...]`` (or None).
+
+    The line is not cleanly splittable (the "·" separator is reused inside
+    fields like ``tools 15·<hash>``), so each value is pulled out by its field
+    name. The prompt rate is derived rather than logged: it is the number of
+    *new* (uncached) prompt tokens divided by the time-to-first-token.
+    """
+    rates = []
+    m_tg = re.search(r"([\d.]+)\s*tok/s", low)
+    if m_tg:
+        try:
+            rates.append(("gen", float(m_tg.group(1))))
+        except ValueError:
+            pass
+    m_in = re.search(r"\binput\s+(" + _NUM_FIELD + ")", low)
+    m_ca = re.search(r"\bcached\s+(" + _NUM_FIELD + ")", low)
+    m_tt = re.search(r"\bttft\s+([\d.]+)\s*s\b", low)
+    if m_in and m_ca and m_tt:
+        try:
+            new_tokens = float(m_in.group(1).replace(",", "")) - float(m_ca.group(1).replace(",", ""))
+            ttft = float(m_tt.group(1))
+            if ttft > 0 and new_tokens > 0:
+                rates.append(("prompt", new_tokens / ttft))
+        except ValueError:
+            pass
+    return rates or None
 
 
 class RateTracker:
@@ -136,14 +190,14 @@ class RateTracker:
     def _absorb(self, key: str, text: str):
         st = self._st[key]
         for line in text.splitlines():
-            r = parse_rate_line(line)
-            if not r:
+            rates = parse_rate_line(line)
+            if not rates:
                 continue
-            kind, val = r
-            if kind == "prompt":
-                st["pg_sum"] += val; st["pg_n"] += 1; st["cur_pg"] = val
-            else:
-                st["tg_sum"] += val; st["tg_n"] += 1; st["cur_tg"] = val
+            for kind, val in rates:
+                if kind == "prompt":
+                    st["pg_sum"] += val; st["pg_n"] += 1; st["cur_pg"] = val
+                else:
+                    st["tg_sum"] += val; st["tg_n"] += 1; st["cur_tg"] = val
 
     def forget_stale(self, live_keys):
         live = set(live_keys)

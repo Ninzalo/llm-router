@@ -39,31 +39,33 @@ def models():
     }
 
 
+_REQ_SEQ = {"n": 0}
+
+
 def _log_timing() -> None:
-    """Emit llama.cpp-style per-request timing lines to stdout.
+    """Emit a splash-serve-style per-request ``Done`` line to stdout.
 
     The router captures a model's stdout into its per-model log file
-    (<log_dir>/<name>.log). A real local backend (splash / llama.cpp) writes
-    ``prompt eval time`` and ``eval time`` lines that report prompt-processing
-    (pg) and generation (tg) speed in tokens/sec; the dashboard parses those
-    lines for current + average rates. We emit the same shape (with a little
-    jitter, so "current" and "average" are distinguishable) so the parser and
-    the dashboard are validated end to end.
+    (<log_dir>/<name>.log). A real local backend (splash serve) writes one
+    ``Done ...`` line per finished request carrying the generation rate
+    (``tok/s``) plus the input / cached / TTFT fields the dashboard uses to
+    derive the prompt rate. We emit the same shape (with jitter, so "current"
+    and "average" are distinguishable) so the parser and the dashboard are
+    validated end to end against the REAL log format.
     """
-    pg = round(random.uniform(18.0, 26.0), 2)     # prompt tokens/sec
-    tg = round(random.uniform(90.0, 120.0), 2)    # generation tokens/sec
-    pt = random.randint(150, 320)                 # prompt tokens
-    gt = random.randint(80, 180)                  # generated tokens
-    prompt_ms = pt * (1000.0 / pg)
-    gen_ms = gt * (1000.0 / tg)
+    _REQ_SEQ["n"] += 1
+    req = _REQ_SEQ["n"]
+    inp = random.randint(4000, 40000)                       # prompt tokens
+    # first request is cold (nothing cached); later ones reuse most of it
+    cached = 0 if req == 1 else min(inp, int(inp * random.uniform(0.0, 0.9)))
+    ttft = random.uniform(0.5, 60.0)                        # time to first token, s
+    tg = round(random.uniform(20.0, 120.0), 1)              # generation tok/s (jitter)
+    out = random.randint(50, 400)                           # generated tokens
+    tok_cycle = round(tg / random.uniform(4.0, 9.0), 1)     # speculative-decode rate
     print(
-        f"prompt eval time =  {prompt_ms:9.2f} ms /  {pt:4d} tokens "
-        f"({1000.0 / pg:8.2f} ms per token, {pg:8.2f} tokens/sec)",
-        flush=True,
-    )
-    print(
-        f"        eval time =  {gen_ms:9.2f} ms /  {gt:4d} tokens "
-        f"({1000.0 / tg:8.2f} ms per token, {tg:8.2f} tokens/sec)",
+        f"{time.strftime('%H:%M:%S')} Done · request {req} · input {inp:,} · "
+        f"cached {cached:,} · output {out} · tools 0 · TTFT {ttft:.1f}s · "
+        f"{tg} tok/s · {tok_cycle} tok/cycle",
         flush=True,
     )
 

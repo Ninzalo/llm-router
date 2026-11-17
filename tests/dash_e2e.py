@@ -118,8 +118,9 @@ try:
         time.sleep(0.15)
     time.sleep(1.0)
     mock_log = os.path.join(LOGDIR, "qwen-local.log")
-    ml_ok = os.path.exists(mock_log) and "tokens/sec" in open(mock_log, encoding="utf-8", errors="replace").read()
-    check("mock log has timing lines", ml_ok, mock_log)
+    _ml = open(mock_log, encoding="utf-8", errors="replace").read() if os.path.exists(mock_log) else ""
+    ml_ok = "Done" in _ml and "tok/s" in _ml
+    check("mock log has splash 'Done ... tok/s' timing lines", ml_ok, mock_log)
 
     # ---- 3. start the dashboard (detached) ----
     print(f"== start dashboard (detached) :{DASH} ==")

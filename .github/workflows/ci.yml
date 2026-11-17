@@ -43,6 +43,9 @@ jobs:
       - name: External model detection (20 checks)
         run: python tests/test_external_detect.py
 
+      - name: Dashboard rate parser (pg/tg)
+        run: python tests/test_rate_parse.py
+
       - name: Dashboard e2e
         run: python tests/dash_e2e.py
 
