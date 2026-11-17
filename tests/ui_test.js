@@ -175,9 +175,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("task3: off-state is red (#ff453a)", /input\[type=checkbox\]\{[^}]*background:#ff453a/.test(cssText));
   check("task3: knob slides right when on (translateX(18px))", /input\[type=checkbox\]:checked::before\{transform:translateX\(18px\)\}/.test(cssText));
   check("task3: checkboxes remain semantic checkboxes (state intact)", d.querySelectorAll('#routerForm input[type="checkbox"]').length === 2 && d.querySelector('#routerForm input[data-field="preload"]').checked === true && d.querySelector('#routerForm input[data-field="keep_inactive_stopped"]').checked === true);
-  // "No instances running" pop-up CSS: drop-in entry + slide-up (bottom->top) exit
-  check("popup CSS: .on visible state present", /#noInstPop\.on\{[^}]*opacity:1/.test(cssText));
-  check("popup CSS: exit state slides up (negative translateY) + fades", /#noInstPop\.gone\{[^}]*-72px[^}]*opacity:0/.test(cssText));
+  // "No instances running" pop-up CSS: in-flow card below the page selector; hidden by
+  // default (display:none), .on puts it in the flow, .shown fades/slides the inner in
+  check("popup CSS: in-flow (display:none by default; .on -> display:block)", /#noInstPop\{[^}]*display:none/.test(cssText) && /#noInstPop\.on\{[^}]*display:block/.test(cssText));
+  check("popup CSS: shown state fades the inner card in (opacity:1)", /#noInstPop\.shown \.pop-inner\{[^}]*opacity:1/.test(cssText));
   check("popup element present in DOM", !!d.querySelector("#noInstPop"));
   // Task 4: empty text inputs show informative placeholders; optional fields marked "(optional)"
   const apiKeyInput = d.querySelector('#routerForm [data-field="api_key"]');
@@ -358,8 +359,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         llm: { pg_current: null, tg_current: null, pg_avg: null, tg_avg: null } } ] }
   ];
   await domD.window.eval("refreshOverview()");
-  check("dismiss: pop-up gets .gone (slide-up exit) after instance start", dD.querySelector("#noInstPop").classList.contains("gone"));
-  check("dismiss: pop-up no longer .on", !dD.querySelector("#noInstPop").classList.contains("on"));
+  await sleep(400);   // let the 300ms fade-out timer finish so the pop-up leaves the flow
+  check("dismiss: pop-up faded out (no longer .shown) after instance start", !dD.querySelector("#noInstPop").classList.contains("shown"));
+  check("dismiss: pop-up out of the flow (no longer .on) after fade", !dD.querySelector("#noInstPop").classList.contains("on"));
   check("dismiss: running banner shown after instance start", (dD.querySelector("#banner").className || "").includes("run"));
   domD.window.close();
 

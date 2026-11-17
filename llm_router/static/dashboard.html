@@ -57,10 +57,14 @@
   .banner{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;margin-bottom:16px;background:var(--card)}
   .banner.run{border-color:var(--good)}
   .banner.stop{border-color:var(--warn)}
-  #noInstPop{position:fixed;top:22px;left:50%;transform:translate(-50%,-18px);opacity:0;pointer-events:none;z-index:1000;transition:transform .38s cubic-bezier(.2,.7,.3,1),opacity .38s ease;will-change:transform,opacity}
-  #noInstPop.on{transform:translate(-50%,0);opacity:1;pointer-events:auto}
-  #noInstPop.gone{transform:translate(-50%,-72px);opacity:0;pointer-events:none}
-  #noInstPop .pop-inner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--card);color:var(--fg);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:12px;padding:14px 18px;box-shadow:0 14px 44px rgba(0,0,0,.28);max-width:min(640px,calc(100vw - 32px))}
+  /* "No instances running" pop-up: an in-flow card directly below the page
+     selector (Overview / Run Instance / Config / Logs), spanning the full content
+     width so it lines up with the other cards. display:none unless shown (so it
+     never leaves a gap); the inner card fades + slides in/out. */
+  #noInstPop{display:none;margin:0 0 16px}
+  #noInstPop.on{display:block}
+  #noInstPop .pop-inner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--card);color:var(--fg);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:12px;padding:14px 18px;box-shadow:0 14px 44px rgba(0,0,0,.28);opacity:0;transform:translateY(-10px);transition:opacity .3s ease,transform .3s cubic-bezier(.2,.7,.3,1)}
+  #noInstPop.shown .pop-inner{opacity:1;transform:translateY(0)}
   .tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--muted);color:#fff;font-size:10px;font-weight:700;cursor:help;vertical-align:middle;margin-left:5px;line-height:1;flex:none}
   [data-theme="dark"] .tip{color:var(--bg)}
   .tipbox{display:none;position:fixed;max-width:280px;background:var(--tipbg);color:var(--tipfg);padding:8px 11px;border-radius:8px;font-size:12.5px;line-height:1.45;z-index:100;box-shadow:0 6px 22px rgba(0,0,0,.4);pointer-events:none}
@@ -111,9 +115,16 @@
     <button data-tab="logs">Logs</button>
   </div>
 
+  <!-- "No instances running" pop-up: sits directly below the page selector, full
+       content width (lines up with the cards). Shown only when zero instances are
+       running; stays current even when the Overview tab is not the active tab. -->
+  <div id="noInstPop" role="status" aria-live="polite" aria-hidden="true">
+    <div class="pop-inner" id="noInstPopInner"></div>
+  </div>
+
   <!-- ============================== OVERVIEW ============================== -->
   <section class="tab active" id="tab-overview">
-    <div class="banner stop" id="banner"></div>
+    <div class="banner" id="banner"></div>
     <div class="card">
       <h2>Running instances <span class="tip" data-tip="Every router instance currently running on this machine, discovered from the router-<port>.pid pidfiles plus a scan of the process list. Refreshes every 5 seconds.">?</span></h2>
       <div class="meta">Auto-refreshing every 5s</div>
@@ -193,12 +204,6 @@
     </div>
   </section>
 </main>
-
-<!-- Floating "no instances running" pop-up: drops in when nothing is running,
-     slides from the bottom to the top (and fades) when any instance starts. -->
-<div id="noInstPop" role="status" aria-live="polite" aria-hidden="true">
-  <div class="pop-inner" id="noInstPopInner"></div>
-</div>
 
 <script>
 "use strict";
@@ -321,13 +326,10 @@ function renderBanner(def, instances){
       <span>The default instance is running on <strong>:${def.port}</strong> (${def.path}).</span>
       <span class="spacer"></span>
       <span class="hint">The dashboard never auto-starts a router — use Overview or Run Instance to manage instances.</span>`;
-  } else if(instances.length>0){
-    b.style.display='';
-    b.className='banner stop';
-    b.innerHTML = `<span class="badge stopped"><span class="dot"></span>default not running</span>
-      <span>The default instance is not running — ${instances.length} other instance${instances.length>1?'s':''} active.</span>`;
   } else {
-    // Nothing is running: the "no default instance" notice is the floating pop-up, not this inline banner.
+    // The "default not running" inline banner was removed: the "Run default instance"
+    // pop-up (below the page selector) now covers the not-running case, so this banner
+    // only shows the positive "default running" state (and is hidden otherwise).
     b.style.display='none';
     b.innerHTML='';
   }
@@ -360,15 +362,16 @@ function updateNoInstPop(instances, def){
     }
     if(popTimer){ clearTimeout(popTimer); popTimer=null; }
     pop.setAttribute('aria-hidden','false');
-    pop.classList.remove('gone');
-    void pop.offsetWidth;              // restart the entry transition
-    pop.classList.add('on');
-  } else if(pop.classList.contains('on')){
-    // An instance is now running -> dismiss the pop-up: it slides from the bottom to the top and fades out.
-    pop.classList.remove('on');
-    pop.classList.add('gone');
+    if(!pop.classList.contains('shown')){
+      pop.classList.add('on');            // into the flow (display:block); inner still opacity:0
+      void pop.offsetWidth;               // reflow so the inner has a start frame to transition from
+      pop.classList.add('shown');         // fade + slide the inner card in
+    }
+  } else if(pop.classList.contains('on') || pop.classList.contains('shown')){
+    // An instance is now running -> fade the inner card out, then take it out of the flow.
     pop.setAttribute('aria-hidden','true');
-    popTimer=setTimeout(()=>{ pop.classList.remove('gone'); popBuilt=false; }, 420);
+    pop.classList.remove('shown');
+    popTimer=setTimeout(()=>{ pop.classList.remove('on'); popBuilt=false; }, 300);
   }
 }
 async function stopInstance(port){
