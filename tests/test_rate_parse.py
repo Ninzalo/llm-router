@@ -123,6 +123,69 @@ single = _router_rate(b_rate, rt2, [kb]) or {}
 check("single running model -> average equals that model's own (no other model)", single.get("tg_avg") == 200.0 and single.get("pg_avg") == 1000.0, str(single))
 check("no active-model rate -> None", _router_rate(None, rt2, [ka, kb]) is None)
 
+print("== persistence: averages survive a router/dashboard restart (never disappear) ==")
+_pdir = _tf.mkdtemp(prefix="llmrouter_rate_persist_")
+_plog = os.path.join(_pdir, "qwen.log")
+_pstate = os.path.join(_pdir, "state")
+REQ1 = "13:00:00 Done \u00b7 request 1 \u00b7 input 1,000 \u00b7 cached 0 \u00b7 output 10 \u00b7 tools 0 \u00b7 TTFT 2.0s \u00b7 100.0 tok/s \u00b7 10.0 tok/cycle\n"
+REQ2 = "13:05:00 Done \u00b7 request 2 \u00b7 input 1,000 \u00b7 cached 0 \u00b7 output 10 \u00b7 tools 0 \u00b7 TTFT 1.0s \u00b7 200.0 tok/s \u00b7 20.0 tok/cycle\n"
+open(_plog, "w", encoding="utf-8").write(REQ1)
+rt1 = RateTracker(state_dir=_pstate)
+r1 = rt1.sample("18590:qwen", _plog)
+rt1.flush()
+check("p1: first request captured (tg 100, pg 500)",
+      r1 is not None and abs(r1["tg_avg"] - 100.0) < 1e-9 and abs(r1["pg_avg"] - 500.0) < 1e-9, str(r1))
+check("p1: rates.json written to the state dir",
+      os.path.exists(os.path.join(_pstate, "rates.json")))
+with open(_plog, "a", encoding="utf-8") as f:
+    f.write(REQ2)
+rt2 = RateTracker(state_dir=_pstate)   # a fresh process (router/dashboard restart)
+r2 = rt2.sample("18590:qwen", _plog)
+check("p2: restart resumes from persisted state (tg avg mean(100,200)=150, not 200)",
+      r2 is not None and abs(r2["tg_avg"] - 150.0) < 1e-9, str(r2))
+check("p2: restart resumes (pg avg mean(500,1000)=750, not 1000)",
+      r2 is not None and abs(r2["pg_avg"] - 750.0) < 1e-9, str(r2))
+check("p2: request counts carried across the restart (pg_n 2, tg_n 2)",
+      r2 is not None and r2["pg_n"] == 2 and r2["tg_n"] == 2, str(r2))
+
+print("== persistence: log truncation keeps the accumulated averages ==")
+_tdir = _tf.mkdtemp(prefix="llmrouter_rate_trunc_")
+_tlog = os.path.join(_tdir, "qwen.log")
+_tstate = os.path.join(_tdir, "state")
+open(_tlog, "w", encoding="utf-8").write(REQ1)
+rtA = RateTracker(state_dir=_tstate)
+rA = rtA.sample("18590:qwen", _tlog)
+rtA.flush()
+open(_tlog, "w", encoding="utf-8").close()   # log truncated to empty
+rtB = RateTracker(state_dir=_tstate)
+rB = rtB.sample("18590:qwen", _tlog)
+check("t: truncation does not reset the averages (still tg 100, pg 500)",
+      rB is not None and abs(rB["tg_avg"] - 100.0) < 1e-9 and abs(rB["pg_avg"] - 500.0) < 1e-9, str(rB))
+
+print("== persistence: a stopped model keeps its averages (merge, never delete) ==")
+_kdir = _tf.mkdtemp(prefix="llmrouter_rate_keep_")
+_klog = os.path.join(_kdir, "qwen.log")
+_kstate = os.path.join(_kdir, "state")
+open(_klog, "w", encoding="utf-8").write(REQ1)
+rtK = RateTracker(state_dir=_kstate)
+rtK.sample("18590:qwen", _klog)   # running -> captured
+rtK.flush()
+rtK.forget_stale([])              # the model stops -> dropped from the in-memory table
+rtK.flush()                       # merge: nothing new, prior state stays on disk
+rtK2 = RateTracker(state_dir=_kstate)   # restart
+rK = rtK2.sample("18590:qwen", _klog)
+check("k: stopped-then-restarted model resumes its averages (tg 100, pg 500)",
+      rK is not None and abs(rK["tg_avg"] - 100.0) < 1e-9 and abs(rK["pg_avg"] - 500.0) < 1e-9, str(rK))
+
+print("== persistence: a model never started via the router has no rates (the one allowed gap) ==")
+_ndir = _tf.mkdtemp(prefix="llmrouter_rate_never_")
+_nlog = os.path.join(_ndir, "newmodel.log")
+_nstate = os.path.join(_ndir, "state")
+open(_nlog, "w", encoding="utf-8").close()   # empty, never tracked
+rtN = RateTracker(state_dir=_nstate)
+rN = rtN.sample("18590:newmodel", _nlog)
+check("n: never-started model -> None (no fabricated rates)", rN is None, str(rN))
+
 print()
 if FAILS:
     print(f"RESULT: {len(FAILS)} FAILURE(S): {FAILS}")

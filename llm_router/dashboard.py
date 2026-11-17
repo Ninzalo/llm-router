@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import re
@@ -134,17 +135,30 @@ def _parse_splash_done(low: str):
 
 
 class RateTracker:
-    """Tracks current + average pg/tg rates per log file by tailing new bytes.
+    """Tracks current + average pg/tg rates per model, persisting across restarts.
 
-    Keys are arbitrary strings (``"<port>:<model>"``). On first sight of a key we
-    seed from the whole log (capped to the last ``_SEED_CAP`` bytes) so the
-    average reflects history; after that we only read newly-appended bytes and
-    accumulate running sums. ``forget_stale`` drops keys that are no longer
-    running so the table does not grow unbounded.
+    Keys are arbitrary strings (``"<port>:<model>"``). For each model we tail
+    newly-appended bytes from its log and keep running sums. A model's log is
+    *appended* (never truncated) by the router, so those sums describe the
+    model's whole router-tracked lifetime.
+
+    To keep the averages from "disappearing" on a dashboard/router/model restart
+    (they must never reset unless a model was never started via the router), the
+    running state is persisted to ``<state_dir>/rates.json``, keyed by the log
+    file's real path. On first sight of a model in this process we adopt its
+    persisted state when one exists (so the average resumes where it left off)
+    and only seed fresh from the log tail (capped to the last ``_SEED_CAP``
+    bytes) when it was never tracked before. ``forget_stale`` drops in-memory
+    entries for stopped models, but ``flush`` only ever merges into the file, so
+    the persisted state is kept and a later restart resumes instead of resetting.
     """
 
-    def __init__(self):
+    _FIELDS = ("pos", "pg_sum", "pg_n", "tg_sum", "tg_n", "cur_pg", "cur_tg")
+
+    def __init__(self, state_dir: str | None = None):
         self._st: dict[str, dict] = {}
+        self._state_dir = state_dir
+        self._dirty = False
 
     def _fresh(self, key: str, pos: int) -> dict:
         return {
@@ -153,6 +167,63 @@ class RateTracker:
             "cur_pg": None, "cur_tg": None,
         }
 
+    # --------------------------------------------------------- persistence
+    def _rates_path(self) -> str:
+        assert self._state_dir is not None
+        return os.path.join(self._state_dir, "rates.json")
+
+    def _load_state(self, path_real: str):
+        """Load a model's persisted running state (or None if it was never tracked)."""
+        if not self._state_dir:
+            return None
+        try:
+            with open(self._rates_path(), "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            return None
+        st = data.get(path_real) if isinstance(data, dict) else None
+        if not isinstance(st, dict):
+            return None
+        norm = self._fresh("", 0)
+        for k in self._FIELDS:
+            norm[k] = st[k]
+        return norm
+
+    def flush(self):
+        """Persist the running state of every tracked model.
+
+        Merges into the existing file (never deletes) so a model's averages
+        survive even after it stops or is dropped from the in-memory table.
+        """
+        if not self._state_dir or not self._dirty:
+            return
+        updated: dict[str, dict] = {}
+        for st in self._st.values():
+            p = st.get("_path")
+            if p:
+                updated[p] = {k: st[k] for k in self._FIELDS}
+        if not updated:
+            self._dirty = False
+            return
+        try:
+            with open(self._rates_path(), "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                data = {}
+        except (OSError, ValueError):
+            data = {}
+        data.update(updated)
+        try:
+            os.makedirs(self._state_dir, exist_ok=True)
+            tmp = self._rates_path() + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+            os.replace(tmp, self._rates_path())
+            self._dirty = False
+        except OSError:
+            pass
+
+    # ------------------------------------------------------------- sampling
     def sample(self, key: str, path: str):
         """Read newly-appended lines from ``path`` and return a rate snapshot."""
         if not path or not os.path.exists(path):
@@ -163,11 +234,15 @@ class RateTracker:
             return None
         st = self._st.get(key)
         if st is None:
-            st = self._fresh(key, max(0, size - _SEED_CAP))
+            path_real = os.path.realpath(path)
+            persisted = self._load_state(path_real)
+            st = persisted if persisted is not None else self._fresh(key, max(0, size - _SEED_CAP))
+            st["_path"] = path_real
             self._st[key] = st
-        if size < st["pos"]:  # rotated / truncated -> reseed
-            st = self._fresh(key, max(0, size - _SEED_CAP))
-            self._st[key] = st
+        if size < st["pos"]:
+            # Log rotated/truncated: keep the accumulated averages; just re-aim
+            # the read at the (new) tail so we don't double-count new content.
+            st["pos"] = max(0, size - _SEED_CAP)
         if size > st["pos"]:
             try:
                 with open(path, "rb") as f:
@@ -175,6 +250,7 @@ class RateTracker:
                     data = f.read(size - st["pos"])
                 st["pos"] = size
                 self._absorb(key, data.decode("utf-8", "replace"))
+                self._dirty = True
             except OSError:
                 pass
         if st["pg_n"] == 0 and st["tg_n"] == 0:
@@ -311,7 +387,7 @@ def _routers_for_port(port: int) -> list:
 # -------------------------------------------------------------------- the app
 def build_dashboard_app() -> FastAPI:
     app = FastAPI(title="llm-router dashboard", docs_url=None, openapi_url=None, redoc_url=None)
-    tracker = RateTracker()
+    tracker = RateTracker(state_dir=str(_state_dir()))
     app.state.tracker = tracker
 
     static_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "dashboard.html")
@@ -390,6 +466,7 @@ def build_dashboard_app() -> FastAPI:
                 entry["router"] = _router_rate(active_rate, tracker, inst_keys)
             out.append(entry)
         tracker.forget_stale(live_keys)
+        tracker.flush()  # persist running averages so they survive restarts
         default_running = any(i["port"] == cfg_port and i["reached"] for i in out)
         return {
             "default": {

@@ -178,6 +178,11 @@ try:
     # equals that model's own average (the multi-model pooling is unit-tested).
     check("router pg_avg == active model pg_avg (1 running model)", r1.get("pg_avg") == llm.get("pg_avg"), f"router={r1} active={llm}")
     check("router tg_avg == active model tg_avg (1 running model)", r1.get("tg_avg") == llm.get("tg_avg"), f"router={r1} active={llm}")
+    # persistence: the live dashboard must have written the running-average state
+    # to the (fresh) isolated state dir so the averages survive a dashboard/router
+    # restart. The unit tests prove the resume; this proves the running dashboard
+    # actually persists. (STATE is wiped at test start, so this is this run's file.)
+    check("rate state persisted to the state dir (rates.json)", os.path.exists(os.path.join(STATE, "rates.json")), STATE)
     emb = models1.get("embed-local", {})
     check("embed-local NOT active", emb.get("active") is not True, str(emb)[:150])
     check("suggested_port present", isinstance(inst.get("suggested_port"), int), str(inst.get("suggested_port")))
