@@ -421,8 +421,11 @@ for a detached run.
   / shutdown-grace / preload knobs, per-model startup/health/env). The self-explanatory ones
   (the theme toggle, the rate metrics, and most run/config controls) don't.
 
-Rates are parsed from llama.cpp-style timing lines (`prompt eval time …`, `eval time = …`)
-in each model's log file, so they reflect what the backends are actually doing.
+Rates are parsed straight from each model's log file, so they reflect what the backends are
+actually doing. Two formats are recognised: **llama.cpp**-style per-iteration timing lines
+(`prompt eval time …`, `eval time = …`), and the per-request `Done` line a **splash serve**
+model logs (e.g. `Done … TTFT 54.1s · 46.2 tok/s`) — from which tg comes straight from the
+`tok/s`, and pp is derived as (input − cached) new prompt tokens ÷ TTFT.
 
 ## Admin / lifecycle API
 
