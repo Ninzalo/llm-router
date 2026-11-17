@@ -8,12 +8,12 @@
   :root{
     --bg:#f4f5f7; --card:#ffffff; --fg:#1a1d23; --muted:#6b7280; --line:#e2e5ea;
     --accent:#2563eb; --accent-fg:#fff; --good:#16a34a; --warn:#d97706; --bad:#dc2626;
-    --chip:#eef1f6; --num:#0f172a; --tipbg:#111827; --tipfg:#f9fafb; --code:#f1f3f7;
+    --chip:#eef1f6; --num:#0f172a; --tipbg:#111827; --tipfg:#f9fafb; --code:#f1f3f7; --ratebox-bg:#4b5563; --ratebox-fg:#f9fafb;
   }
   [data-theme="dark"]{
     --bg:#0e1116; --card:#161b22; --fg:#e6edf3; --muted:#8b949e; --line:#2b313b;
     --accent:#3b82f6; --accent-fg:#fff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
-    --chip:#21262d; --num:#e6edf3; --tipbg:#f0f3f7; --tipfg:#111827; --code:#0d1117;
+    --chip:#21262d; --num:#e6edf3; --tipbg:#f0f3f7; --tipfg:#111827; --code:#0d1117; --ratebox-bg:#3d4451; --ratebox-fg:#e8edf3;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
@@ -70,14 +70,14 @@
   [data-theme="dark"] .tip{color:var(--bg)}
   .tipbox{display:none;position:fixed;max-width:280px;background:var(--tipbg);color:var(--tipfg);padding:8px 11px;border-radius:8px;font-size:12.5px;line-height:1.45;z-index:100;box-shadow:0 6px 22px rgba(0,0,0,.4);pointer-events:none}
   /* floating "last rates" window shown when hovering the router's Avg pp / Avg tg */
-  .ratebox{display:none;position:fixed;z-index:110;background:var(--tipbg);color:var(--tipfg);padding:9px 11px;border-radius:8px;box-shadow:0 6px 22px rgba(0,0,0,.4);pointer-events:none;font-size:12px}
-  .ratebox .rb-title{font-weight:600;margin-bottom:6px;color:var(--tipfg);opacity:.85}
+  .ratebox{display:none;position:fixed;z-index:110;background:var(--ratebox-bg);color:var(--ratebox-fg);padding:9px 11px;border-radius:8px;box-shadow:0 6px 22px rgba(0,0,0,.4);pointer-events:none;font-size:12px}
+  .ratebox .rb-title{font-weight:600;margin-bottom:6px;color:var(--ratebox-fg);opacity:.85}
   .ratebox table{border-collapse:collapse}
   .ratebox th,.ratebox td{text-align:right;padding:2px 10px 2px 0;white-space:nowrap}
   .ratebox th:first-child,.ratebox td:first-child{text-align:left;padding-right:14px}
   .ratebox thead th{border-bottom:1px solid rgba(128,128,128,.4);font-weight:600}
   .ratebox tbody tr:last-child td{font-weight:700}
-  .ratebox .rb-empty{color:var(--tipfg);opacity:.7}
+  .ratebox .rb-empty{color:var(--ratebox-fg);opacity:.7}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   label.field{display:block;font-size:12px;color:var(--muted);margin-bottom:2px}
   input,select,textarea{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:7px 9px;font-size:13px;font-family:inherit}

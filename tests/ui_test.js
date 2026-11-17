@@ -147,6 +147,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("router Avg pp/tg cells are hoverable (.rate-hover, data-port=18590)", hovers.length === 2 && hovers.every(h => h.getAttribute('data-port') === '18590'), "count=" + hovers.length);
   const rateboxEl = d.querySelector('.ratebox');
   check("ratebox floating window is in the DOM", !!rateboxEl);
+  // The rate hover window is grey-ish via its own --ratebox-bg (not the white
+  // --tipbg), in BOTH themes, so its light text stays readable.
+  check("ratebox bg is grey-ish in both themes (own --ratebox-bg, not white --tipbg)",
+    /:root\{[^}]*--ratebox-bg:#4b5563/.test(HTML)
+    && /\[data-theme="dark"\]\{[^}]*--ratebox-bg:#3d4451/.test(HTML)
+    && /\.ratebox\{[^}]*background:var\(--ratebox-bg\)/.test(HTML),
+    "ratebox grey bg var missing");
   if (rateboxEl) {
     // Hover "Avg pp" -> the table shows the pp column only (model | pp), no tg.
     hovers[0].dispatchEvent(new w.MouseEvent('mouseover', { bubbles: true }));
