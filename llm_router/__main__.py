@@ -584,7 +584,7 @@ def _is_router_server(cmd: str) -> bool:
     if not argv:
         return False
     exe = os.path.basename(argv[0])
-    if not (exe.startswith("python") or "llm-router" in argv[0]):
+    if not (exe.lower().startswith("python") or "llm-router" in argv[0]):
         return False
     return bool(re.search(r"(llm_router|llm-router)\s+(serve|run)\b", cmd))
 
@@ -630,7 +630,7 @@ def _is_watch_process(cmd: str) -> bool:
     if not argv:
         return False
     exe = os.path.basename(argv[0])
-    if not (exe.startswith("python") or "llm-router" in argv[0]):
+    if not (exe.lower().startswith("python") or "llm-router" in argv[0]):
         return False
     return bool(re.search(r"(llm_router|llm-router)\s+watch\b", cmd))
 
@@ -1396,7 +1396,7 @@ def _is_dashboard_process(cmd: str) -> bool:
     if not argv:
         return False
     exe = os.path.basename(argv[0])
-    if not (exe.startswith("python") or exe == "uvicorn" or "llm-router" in argv[0]):
+    if not (exe.lower().startswith("python") or exe == "uvicorn" or "llm-router" in argv[0]):
         return False
     if re.search(r"uvicorn\s+llm_router\.dashboard\b", cmd):
         return True
