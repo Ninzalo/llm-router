@@ -292,7 +292,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("empty-state message shown", /No router instances/.test(d2.querySelector("#instances").textContent));
   // Pop-up replaces the inline "not running" banner when nothing is running
   check("popup: shown when no instances (class 'on')", d2.querySelector("#noInstPop").classList.contains("on"));
-  check("popup: says 'No default instance'", /No default instance/.test(d2.querySelector("#noInstPop").textContent));
+  check("popup: says 'No instances running' + 'One-click start'", /No instances running/.test(d2.querySelector("#noInstPop").textContent) && /One-click start/.test(d2.querySelector("#noInstPop").textContent));
   check("popup: has Run default button", !!d2.querySelector("#runDefaultBtnPop"));
   check("popup: aria-hidden cleared while shown", d2.querySelector("#noInstPop").getAttribute("aria-hidden") === "false");
   check("inline banner hidden when nothing running", d2.querySelector("#banner").style.display === "none");
