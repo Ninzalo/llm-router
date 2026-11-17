@@ -361,6 +361,26 @@ try:
     check("run-default ok", rdj.get("ok") is True, body)
     check("run-default already_running", rdj.get("already_running") is True, body)
 
+    # ---- 13b. POST /api/rates/clear (wipe all stored avg pp/tg rates) ----
+    print("== POST /api/rates/clear (wipe stored rates) ==")
+    st, body = http_err(f"http://127.0.0.1:{DASH}/api/rates/clear", "POST", {}, timeout=15)
+    clearj = json.loads(body)
+    check("clear -> 200 ok", st == 200 and clearj.get("ok") is True, f"st={st} {body}")
+    check("clear reports an int cleared >= 1 (models had rates)",
+          isinstance(clearj.get("cleared"), int) and clearj.get("cleared") >= 1, str(clearj))
+    # After a clear, a re-fetch with NO new request shows EMPTY averages: each
+    # model's tail was re-aimed at its log's current end, so nothing is re-seeded
+    # from history, and the pooled instance (router) average is wiped too.
+    time.sleep(1.0)
+    st, body, _ = http(f"http://127.0.0.1:{DASH}/api/instances", timeout=15)
+    i1c = {i["port"]: i for i in json.loads(body)["instances"]}.get(ROUTER1, {})
+    m1c = {m["name"]: m for m in i1c.get("models", [])}.get("qwen-local", {}) or {}
+    empty = lambda x: x is None or (isinstance(x, dict) and x.get("pp_avg") is None and x.get("tg_avg") is None)
+    check("after clear, qwen-local average is empty (no re-seed from history)",
+          empty(m1c.get("llm")), str(m1c.get("llm")))
+    check("after clear, the pooled router average is empty too",
+          empty(i1c.get("router")), str(i1c.get("router")))
+
     # ---- 14. llm-router dashboard stop ----
     print("== llm-router dashboard stop ==")
     rc, out = cli("dashboard", "stop", timeout=30)

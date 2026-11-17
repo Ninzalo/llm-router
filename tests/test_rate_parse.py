@@ -261,6 +261,33 @@ check("m2: entry is rewritten to the new window schema (samples, no sums/current
       "samples" in migrated and "pg_sum" not in migrated and "cur_pg" not in migrated and len(migrated["samples"]) == 10,
       str(sorted(migrated.keys())))
 
+print("== clear_all: wipes stored rates and stops the re-seed from history ==")
+_qdir = _tf.mkdtemp(prefix="llmrouter_rate_clear_")
+_qlog = os.path.join(_qdir, "qwen.log")
+_qstate = os.path.join(_qdir, "state")
+open(_qlog, "w", encoding="utf-8").write(REQ1 + REQ2)   # history: pp 500 & 1000, tg 100 & 200
+rtQ = RateTracker(state_dir=_qstate)
+q_before = rtQ.sample("18590:qwen", _qlog)
+rtQ.flush()
+check("q1: before clear, the averages are populated (tg 150, pp 750)",
+      q_before is not None and near(q_before["tg_avg"], 150.0) and near(q_before["pp_avg"], 750.0), str(q_before))
+n_cleared = rtQ.clear_all()
+check("q2: clear_all reports the entries cleared (1 model)", n_cleared == 1, str(n_cleared))
+storedQ = read_json(os.path.join(_qstate, "rates.json"))
+gkQ = [k for k in storedQ if os.path.basename(k) == "qwen.log"][0]
+check("q3: after clear, the stored window is empty and the tail is re-aimed at the log end",
+      storedQ[gkQ]["samples"] == [] and storedQ[gkQ]["pos"] == os.path.getsize(_qlog), str(storedQ[gkQ]))
+rtQ2 = RateTracker(state_dir=_qstate)   # a fresh process after the clear
+q_after = rtQ2.sample("18590:qwen", _qlog)
+check("q4: after clear with no new request the average is empty (NOT re-seeded from history)",
+      q_after is None or (q_after["tg_avg"] is None and q_after["pp_avg"] is None), str(q_after))
+with open(_qlog, "a", encoding="utf-8") as f:
+    f.write(REQ2)   # tg 200, pp 1000 — a fresh request arriving AFTER the clear
+q_new = rtQ2.sample("18590:qwen", _qlog)
+check("q5: a request arriving after the clear IS counted (tg 200, pp 1000)",
+      q_new is not None and q_new["tg_current"] == 200.0 and near(q_new["tg_avg"], 200.0) and near(q_new["pp_avg"], 1000.0), str(q_new))
+check("q6: clear_all with no state at all clears nothing (no crash)", RateTracker().clear_all() == 0)
+
 print("== a model never started via the router has no rates (the one allowed gap) ==")
 _ndir = _tf.mkdtemp(prefix="llmrouter_rate_never_")
 _nlog = os.path.join(_ndir, "newmodel.log")

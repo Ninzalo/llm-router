@@ -90,6 +90,7 @@ function buildDom(data) {
         else if (url === "/api/logs") out = data.logs;
         else if (url === "/api/run-default") out = { ok: true, already_running: false, port: 18590 };
         else if (url === "/api/run-instance") out = { ok: true, port: 18591, launch_pid: 99 };
+        else if (url === "/api/rates/clear") out = { ok: true, cleared: 2 };
         else out = { ok: true };
         return { ok: true, status: 200, json: async () => out, text: async () => JSON.stringify(out) };
       };
@@ -164,6 +165,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(60);
   check("Stop -> POST /api/instances/stop {port:18590}", A.calls.some(c => c.url === "/api/instances/stop" && c.method === "POST" && c.body && c.body.port === 18590));
   check("Stop -> status shown on #ovStatus", /Stopped instance on :18590/.test(d.querySelector("#ovStatus").textContent));
+  // Clear-rates button (new feature) — clears all stored avg pp/tg rates
+  check("Clear rates button present in Overview", !!d.querySelector("#clearRatesBtn"));
+  d.querySelector("#clearRatesBtn").click();
+  await sleep(60);
+  check("Clear rates -> POST /api/rates/clear", A.calls.some(c => c.url === "/api/rates/clear" && c.method === "POST"));
+  check("Clear rates -> status shows the cleared count", /Cleared stored rates for 2 model\(s\)\./.test(d.querySelector("#ovStatus").textContent));
+  check("Clear rates -> button re-enabled after the action", !d.querySelector("#clearRatesBtn").disabled);
   check("banner: default running", (d.querySelector("#banner").className || "").includes("run") && /default running/i.test(d.querySelector("#banner").textContent));
   check("no run-default btn when running (pop-up hidden)", !d.querySelector("#runDefaultBtnPop") && !d.querySelector("#noInstPop.on"));
 

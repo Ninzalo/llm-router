@@ -140,8 +140,15 @@
   <section class="tab active" id="tab-overview">
     <div class="banner" id="banner"></div>
     <div class="card">
-      <h2>Running instances <span class="tip" data-tip="Every router instance currently running on this machine, discovered from the router-<port>.pid pidfiles plus a scan of the process list. Refreshes every 5 seconds.">?</span></h2>
-      <div class="meta">Auto-refreshing every 5s</div>
+      <h2>Running instances <span class="tip" data-tip="Every router instance currently running on this machine, discovered from the router-&lt;port&gt;.pid pidfiles plus a scan of the process list. Refreshes every 5 seconds.">?</span></h2>
+      <div class="meta" style="display:flex;align-items:center">
+        <span>Auto-refreshing every 5s</span>
+        <span class="spacer"></span>
+        <span style="display:inline-flex;align-items:center">
+          <button class="btn ghost sm" id="clearRatesBtn">Clear rates</button>
+          <span class="tip" data-tip="Erase all stored average pp/tg rates (per model and per instance) across every instance, including the rates kept on disk. They reset to empty and stay empty until new requests arrive. Running instances and their live current rates are not affected.">?</span>
+        </span>
+      </div>
       <div id="instances"></div>
       <div class="status" id="ovStatus"></div>
     </div>
@@ -235,6 +242,7 @@ function initTheme(){ let t=null; try{t=localStorage.getItem('lr-theme');}catch(
   if(!t) t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
   applyTheme(t); }
 $('#themeBtn').addEventListener('click', ()=>{ const cur=document.documentElement.getAttribute('data-theme'); applyTheme(cur==='dark'?'light':'dark'); });
+$('#clearRatesBtn').addEventListener('click', ()=>clearRates());
 
 /* instance rate data for the "last rates" hover window (port -> recent rates) */
 const rateRecent = {};
@@ -439,6 +447,18 @@ async function stopInstance(port){
     else showStatus($('#ovStatus'), false, res.error||'stop failed');
   }catch(e){ showStatus($('#ovStatus'), false, String(e)); }
   btns.forEach(b=>{ b.disabled=false; b.textContent='■ Stop'; });
+  refreshOverview();
+}
+async function clearRates(){
+  const btn=$('#clearRatesBtn');
+  if(!confirm('Clear all stored average pp/tg rates?\n\nThis erases the per-model and per-instance averages across every instance (including the rates kept on disk). They reset to empty and stay empty until new requests arrive. Running instances and their live current rates are not affected.')) return;
+  if(btn) btn.disabled=true;
+  try{
+    const res=await jsend('/api/rates/clear',{});
+    if(res.ok) showStatus($('#ovStatus'), true, `Cleared stored rates for ${res.cleared} model(s).`);
+    else showStatus($('#ovStatus'), false, res.error||'clear failed');
+  }catch(e){ showStatus($('#ovStatus'), false, String(e)); }
+  if(btn) btn.disabled=false;
   refreshOverview();
 }
 async function refreshOverview(){

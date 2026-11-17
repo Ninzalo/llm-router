@@ -243,6 +243,51 @@ class RateTracker:
         except OSError:
             pass
 
+    def clear_all(self) -> int:
+        """Erase every stored rate: the in-memory windows, the recent (hover)
+        list, and the persisted ``rates.json``.
+
+        The cleared averages stay empty until NEW requests arrive — each
+        still-existing model log is re-aimed at its current end (``pos = file
+        size``) so the window is NOT re-seeded from log history (the normal
+        first-sight behaviour reads back up to ``_SEED_CAP`` bytes, which would
+        immediately repopulate the average). Returns the number of model rate
+        entries that were cleared.
+        """
+        paths: set = set()
+        for st in self._st.values():
+            p = st.get("_path")
+            if p:
+                paths.add(p)
+        if self._state_dir:
+            try:
+                with open(self._rates_path(), "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    paths.update(str(k) for k in data)
+            except (OSError, ValueError):
+                pass
+        count = len(paths)
+        new = {}
+        for p in paths:
+            try:
+                new[p] = {"pos": os.path.getsize(p), "samples": []}
+            except OSError:
+                new[p] = {"pos": 0, "samples": []}
+        self._st.clear()
+        self._recent.clear()
+        self._dirty = False
+        if self._state_dir:
+            try:
+                os.makedirs(self._state_dir, exist_ok=True)
+                tmp = self._rates_path() + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(new, f)
+                os.replace(tmp, self._rates_path())
+            except OSError:
+                pass
+        return count
+
     # ------------------------------------------------------------- sampling
     def _tail(self, key: str, path: str):
         """Adopt the model's state (or create it) and tail newly-appended bytes.
@@ -687,6 +732,17 @@ def build_dashboard_app() -> FastAPI:
     @app.get("/api/instances")
     async def api_instances():
         return await asyncio.to_thread(_gather_instances)
+
+    @app.post("/api/rates/clear")
+    def api_clear_rates():
+        """Erase all stored pp/tg rate windows (per model + instance averages).
+
+        The cleared rates stay empty until new requests arrive (each model's log
+        tail is re-aimed at its current end, so nothing is re-seeded from history).
+        A sync ``def`` so the file I/O runs in a worker thread, not on the loop.
+        """
+        n = tracker.clear_all()
+        return {"ok": True, "cleared": n}
 
     @app.get("/api/config")
     async def api_get_config():
