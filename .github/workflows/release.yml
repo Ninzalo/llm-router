@@ -1,0 +1,111 @@
+name: Release
+
+# Creates a GitHub Release for a pushed vX.Y.Z tag — but ONLY after the full
+# test suite (the same Backend + CLI and Dashboard UI checks that CI runs)
+# passes on that exact tagged commit.
+#
+# The `release` job has `needs: [backend, ui]`, so it is skipped (no release
+# created) unless every matrix leg of both jobs succeeds. If any check fails,
+# the workflow run is red and no release is published.
+#
+# Triggered on every tag push matching v*. The release is both named and
+# tagged with the tag itself (e.g. v1.4.3) — i.e. "the tag's version".
+on:
+  push:
+    tags:
+      - "v*"
+
+# action-gh-release needs to create the release object.
+permissions:
+  contents: write
+
+jobs:
+  backend:
+    name: Backend + CLI (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.15"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package (editable)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Backend suite (27 checks)
+        run: bash tests/run_test.sh
+
+      - name: External model detection (20 checks)
+        run: python tests/test_external_detect.py
+
+      - name: Dashboard rate parser (pp/tg)
+        run: python tests/test_rate_parse.py
+
+      - name: Dashboard e2e
+        run: python tests/dash_e2e.py
+
+      - name: Dashboard Ctrl-C shutdown
+        run: python tests/dash_ctrlc.py
+
+      - name: Stop during model startup
+        run: bash tests/test_stop_startup.sh
+
+      - name: Stop stops watcher tailers
+        run: bash tests/test_stop_watchers.sh
+
+      - name: No stray test ports left behind
+        run: python tests/check_stray_ports.py
+
+  ui:
+    name: Dashboard UI (jsdom, node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: UI suite
+        run: node tests/ui_test.js
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [backend, ui]   # runs only if every backend + ui leg passed
+    steps:
+      - name: Checkout (fetch the annotated tag)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Create release (named with the tag's version)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          token: ${{ secrets.GITHUB_TOKEN }}
