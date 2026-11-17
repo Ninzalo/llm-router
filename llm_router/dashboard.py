@@ -205,6 +205,46 @@ class RateTracker:
             if k not in live:
                 self._st.pop(k, None)
 
+    def aggregate_avg(self, keys):
+        """Instance-level average across a set of keys (all running models of one
+        instance). Pools the raw running sums so the mean is weighted by each
+        model's request count. Returns ``{"pg_avg","tg_avg","pg_n","tg_n"}`` or
+        None if none of the keys has any samples yet."""
+        pg_sum = pg_n = tg_sum = tg_n = 0.0
+        for k in keys:
+            st = self._st.get(k)
+            if not st:
+                continue
+            pg_sum += st["pg_sum"]; pg_n += st["pg_n"]
+            tg_sum += st["tg_sum"]; tg_n += st["tg_n"]
+        if pg_n == 0 and tg_n == 0:
+            return None
+        return {
+            "pg_avg": round(pg_sum / pg_n, 2) if pg_n else None,
+            "tg_avg": round(tg_sum / tg_n, 2) if tg_n else None,
+            "pg_n": pg_n, "tg_n": tg_n,
+        }
+
+
+def _router_rate(active_rate, tracker, inst_keys):
+    """Build the instance (router) rate object.
+
+    The *current* tg/pg come from the active (currently-running) model; the
+    *average* tg/pg are pooled across ALL running models of the instance (not
+    just the active one). Returns None when there is no active-model rate.
+    """
+    if not active_rate:
+        return None
+    agg = tracker.aggregate_avg(inst_keys) or {}
+    return {
+        "pg_current": active_rate.get("pg_current"),
+        "tg_current": active_rate.get("tg_current"),
+        "pg_avg": agg.get("pg_avg"),
+        "tg_avg": agg.get("tg_avg"),
+        "pg_n": agg.get("pg_n", active_rate.get("pg_n")),
+        "tg_n": agg.get("tg_n", active_rate.get("tg_n")),
+    }
+
 
 # ----------------------------------------------------------------- small utils
 def _port_in_use(port: int) -> bool:
@@ -324,17 +364,18 @@ def build_dashboard_app() -> FastAPI:
                 active = status.get("active")
                 entry["active"] = active
                 entry["ready"] = bool(active)
+                active_rate = None
+                inst_keys = []
                 for m in status.get("models", []):
                     if m.get("running"):
                         key = f"{port}:{m['name']}"
                         live_keys.add(key)
                         llm_rate = tracker.sample(key, m.get("log_path"))
+                        inst_keys.append(key)
                     else:
                         llm_rate = None
                     if m.get("active"):
-                        # The instance's pg/tg == its active model's pg/tg (a
-                        # router only ever talks to its one active model).
-                        entry["router"] = llm_rate
+                        active_rate = llm_rate
                     entry["models"].append({
                         "name": m["name"], "kind": m.get("kind"),
                         "running": m.get("running"), "active": m.get("active"),
@@ -343,6 +384,10 @@ def build_dashboard_app() -> FastAPI:
                         "base_url": m.get("base_url"), "log_path": m.get("log_path"),
                         "llm": llm_rate,
                     })
+                # Instance (router) rate: current tg/pg from the active (running)
+                # model; average tg/pg pooled across ALL running models of the
+                # instance (not just the active one).
+                entry["router"] = _router_rate(active_rate, tracker, inst_keys)
             out.append(entry)
         tracker.forget_stale(live_keys)
         default_running = any(i["port"] == cfg_port and i["reached"] for i in out)

@@ -93,9 +93,9 @@
   .viewer.on{display:block}
   .viewer .hd{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-family:inherit}
   .viewer .log-scroll{max-height:48vh;overflow:auto;white-space:pre-wrap;word-break:break-word}
-  /* always-visible floating "bubble" pinned to the bottom of the log; the
-     Auto-scroll control lives inside it so it never scrolls away with the log */
-  .viewer .log-fab{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:22px;padding:4px 8px;box-shadow:0 8px 24px rgba(0,0,0,.28);z-index:5}
+  /* always-visible floating "bubble" pinned to the top-right of the panel;
+     the Auto-scroll control lives inside it so it never scrolls away with the log */
+  .viewer .log-fab{position:absolute;top:12px;right:12px;display:flex;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:22px;padding:4px 8px;box-shadow:0 8px 24px rgba(0,0,0,.28);z-index:5}
   .hint{color:var(--muted);font-size:12px}
   code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:12px}
   .mode-toggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -707,8 +707,9 @@ async function watchLog(l){
   watchedLogId=l.id;
   const v=$('#viewer'); v.classList.add('on');
   // The log itself scrolls inside .log-scroll; the Auto-scroll control lives in a
-  // floating .log-fab bubble pinned to the bottom so it is always visible. The old
-  // in-header "Stop" button is gone — "Stop watching" in the list handles stopping.
+  // floating .log-fab bubble pinned to the top-right of the panel so it is always
+  // visible. The old in-header "Stop" button is gone — "Stop watching" in the list
+  // handles stopping.
   v.innerHTML=`<div class="hd"><strong>${l.label}</strong><span class="hint">streaming…</span></div>
     <div class="log-scroll" id="logScroll"><div id="logbody"></div></div>
     <div class="log-fab"><button class="btn ghost sm" id="autoScroll">Auto-scroll: on</button></div>`;

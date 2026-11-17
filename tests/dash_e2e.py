@@ -171,6 +171,13 @@ try:
     r1 = i1.get("router") or {}
     check("instance router has pg_current (active model)", r1.get("pg_current") is not None, str(r1))
     check("instance router has tg_avg", r1.get("tg_avg") is not None, str(r1))
+    # current tg/pg come from the active (running) model...
+    check("router pg_current == active model pg_current", r1.get("pg_current") == llm.get("pg_current"), f"router={r1} active={llm}")
+    check("router tg_current == active model tg_current", r1.get("tg_current") == llm.get("tg_current"), f"router={r1} active={llm}")
+    # ...and with only ONE running model on :18590, the pooled instance average
+    # equals that model's own average (the multi-model pooling is unit-tested).
+    check("router pg_avg == active model pg_avg (1 running model)", r1.get("pg_avg") == llm.get("pg_avg"), f"router={r1} active={llm}")
+    check("router tg_avg == active model tg_avg (1 running model)", r1.get("tg_avg") == llm.get("tg_avg"), f"router={r1} active={llm}")
     emb = models1.get("embed-local", {})
     check("embed-local NOT active", emb.get("active") is not True, str(emb)[:150])
     check("suggested_port present", isinstance(inst.get("suggested_port"), int), str(inst.get("suggested_port")))
