@@ -613,8 +613,9 @@ resolve `dashboard.html` and `config.dash.yaml` relative to themselves):
   drops the in-flight requests and the SSE stream instead of waiting).
 
 > **CI (GitHub Actions, every push + PR):** all of the above runs in
-> [.github/workflows/ci.yml](.github/workflows/ci.yml) — a **backend** job (python 3.11 + 3.12)
-> that installs the package and runs `run_test.sh`, `test_external_detect.py`, `dash_e2e.py`,
-> `dash_ctrlc.py`, `test_stop_startup.sh`, and `test_stop_watchers.sh`, plus a **UI** job
-> (node 20 + 22) that runs `ui_test.js`. Both use isolated `18xxx` ports and temp state, and the
-> backend job fails if any test port survives the run.
+> [.github/workflows/ci.yml](.github/workflows/ci.yml) — a **backend** job (python 3.12 + 3.15)
+> that installs the package and runs `run_test.sh`, `test_external_detect.py`,
+> `test_rate_parse.py`, `dash_e2e.py`, `dash_ctrlc.py`, `test_stop_startup.sh`,
+> `test_stop_watchers.sh`, and `check_stray_ports.py`, plus a **UI** job (node 20 + 22) that
+> runs `ui_test.js`. Both use isolated `18xxx` ports and temp state, and the backend job
+> fails if any test port survives the run.
