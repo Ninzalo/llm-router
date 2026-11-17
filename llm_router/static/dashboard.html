@@ -70,9 +70,9 @@
   [data-theme="dark"] .tip{color:var(--bg)}
   .tipbox{display:none;position:fixed;max-width:280px;background:var(--tipbg);color:var(--tipfg);padding:8px 11px;border-radius:8px;font-size:12.5px;line-height:1.45;z-index:100;box-shadow:0 6px 22px rgba(0,0,0,.4);pointer-events:none}
   /* floating "last rates" window shown when hovering the router's Avg pp / Avg tg */
-  .ratebox{display:none;position:fixed;z-index:110;background:var(--tipbg);color:var(--tipfg);padding:9px 11px;border-radius:8px;box-shadow:0 6px 22px rgba(0,0,0,.4);pointer-events:none;font-size:12px;min-width:190px;max-width:320px}
+  .ratebox{display:none;position:fixed;z-index:110;background:var(--tipbg);color:var(--tipfg);padding:9px 11px;border-radius:8px;box-shadow:0 6px 22px rgba(0,0,0,.4);pointer-events:none;font-size:12px}
   .ratebox .rb-title{font-weight:600;margin-bottom:6px;color:var(--tipfg);opacity:.85}
-  .ratebox table{border-collapse:collapse;width:100%}
+  .ratebox table{border-collapse:collapse}
   .ratebox th,.ratebox td{text-align:right;padding:2px 10px 2px 0;white-space:nowrap}
   .ratebox th:first-child,.ratebox td:first-child{text-align:left;padding-right:14px}
   .ratebox thead th{border-bottom:1px solid rgba(128,128,128,.4);font-weight:600}
@@ -270,21 +270,24 @@ const rateRecent = {};
 
 /* ------------------------- rate "last rates" hover window ------------------------- */
 /* Hovering the router's "Avg pp" / "Avg tg" cells shows a floating table of the
-   instance's most recent rates (model | pp | tg), newest last. The data is read
-   from rateRecent (port -> rates), refreshed on every render. */
+   instance's most recent rates for THAT metric only (model | pp, or model | tg),
+   newest last. The data is read from rateRecent (port -> rates), refreshed on
+   every render. */
 (function(){
   const box = document.createElement('div'); box.className='ratebox'; document.body.appendChild(box);
   const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const num = v => (v==null) ? '\u2014' : Number(v).toFixed(2);
-  function buildTable(recent){
+  function buildTable(recent, metric){
+    const col = metric === 'tg' ? 'tg' : 'pp';   // show only the hovered metric
     if(!recent || !recent.length) return '<div class="rb-empty">No recent rates yet.</div>';
-    const rows = recent.map(e=>`<tr><td>${esc(e.model)}</td><td>${num(e.pp)}</td><td>${num(e.tg)}</td></tr>`).join('');
+    const rows = recent.map(e=>`<tr><td>${esc(e.model)}</td><td>${num(e[col])}</td></tr>`).join('');
     return `<div class="rb-title">Last ${recent.length} rates</div>
-      <table><thead><tr><th>model</th><th>pp</th><th>tg</th></tr></thead><tbody>${rows}</tbody></table>`;
+      <table><thead><tr><th>model</th><th>${col}</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
   function show(el){
     const recent = rateRecent[el.getAttribute('data-port')] || [];
-    box.innerHTML = buildTable(recent);
+    const metric = el.getAttribute('data-metric') || 'pp';
+    box.innerHTML = buildTable(recent, metric);
     box.style.display='block';
     const r=el.getBoundingClientRect(), bw=box.offsetWidth, bh=box.offsetHeight;
     let left=Math.max(8, Math.min(r.left + r.width/2 - bw/2, window.innerWidth - bw - 8));
@@ -319,7 +322,8 @@ function metricBlock(r, port){
   // the rate-hover window can look up that instance's most recent rates.
   const m=(k,label,hover)=>{
     const cls = hover ? 'metric rate-hover' : 'metric';
-    const attr = hover ? ` data-port="${port}"` : '';
+    const metric = k.startsWith('pp') ? 'pp' : 'tg';
+    const attr = hover ? ` data-port="${port}" data-metric="${metric}"` : '';
     return `<div class="${cls}"${attr}><div class="k">${label}</div><div class="v">${fmt(r&&r[k])}</div></div>`;
   };
   return `<div class="grid" style="margin-bottom:6px">

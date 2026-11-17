@@ -148,12 +148,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const rateboxEl = d.querySelector('.ratebox');
   check("ratebox floating window is in the DOM", !!rateboxEl);
   if (rateboxEl) {
+    // Hover "Avg pp" -> the table shows the pp column only (model | pp), no tg.
     hovers[0].dispatchEvent(new w.MouseEvent('mouseover', { bubbles: true }));
-    check("hover Avg pp -> ratebox shows the last-rates table",
-      rateboxEl.style.display === 'block' && /model/.test(rateboxEl.textContent) && /pp/.test(rateboxEl.textContent) && /tg/.test(rateboxEl.textContent),
+    check("hover Avg pp -> table shows the pp column only (no tg)",
+      rateboxEl.style.display === 'block' && /model/.test(rateboxEl.textContent) && /pp/.test(rateboxEl.textContent) && !/tg/.test(rateboxEl.textContent),
       "display=" + rateboxEl.style.display + " html=" + rateboxEl.innerHTML);
-    check("ratebox lists the recent rates (qwen-local 21.50 / 101.20)", /qwen-local/.test(rateboxEl.textContent) && /21\.50/.test(rateboxEl.textContent) && /101\.20/.test(rateboxEl.textContent), rateboxEl.innerHTML);
-    hovers[0].dispatchEvent(new w.MouseEvent('mouseout', { bubbles: true }));
+    check("hover Avg pp -> lists qwen-local pp 21.50 (not the tg value 101.20)",
+      /qwen-local/.test(rateboxEl.textContent) && /21\.50/.test(rateboxEl.textContent) && !/101\.20/.test(rateboxEl.textContent), rateboxEl.innerHTML);
+    // Hover "Avg tg" -> the table shows the tg column only (model | tg), no pp.
+    hovers[1].dispatchEvent(new w.MouseEvent('mouseover', { bubbles: true }));
+    check("hover Avg tg -> table shows the tg column only (no pp)",
+      rateboxEl.style.display === 'block' && /model/.test(rateboxEl.textContent) && /tg/.test(rateboxEl.textContent) && !/pp/.test(rateboxEl.textContent),
+      rateboxEl.innerHTML);
+    check("hover Avg tg -> lists qwen-local tg 101.20 (not the pp value 21.50)",
+      /qwen-local/.test(rateboxEl.textContent) && /101\.20/.test(rateboxEl.textContent) && !/21\.50/.test(rateboxEl.textContent), rateboxEl.innerHTML);
+    hovers[1].dispatchEvent(new w.MouseEvent('mouseout', { bubbles: true }));
     check("mouseout hides the ratebox", rateboxEl.style.display === 'none', "display=" + rateboxEl.style.display);
   }
   check("embedding row present", /embed-local/.test(card.textContent));
