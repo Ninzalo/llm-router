@@ -63,8 +63,8 @@
      never leaves a gap); the inner card fades + slides in/out. */
   #noInstPop{display:none;margin:0 0 16px}
   #noInstPop.on{display:block}
-  #noInstPop .pop-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--card);color:var(--fg);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:12px;padding:14px 18px;box-shadow:0 14px 44px rgba(0,0,0,.28);opacity:0;transform:translateY(-10px);transition:opacity .3s ease,transform .3s cubic-bezier(.2,.7,.3,1)}
-  #noInstPop .pop-cta{display:inline-flex;align-items:center;gap:10px;white-space:nowrap}
+  #noInstPop .pop-inner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--card);color:var(--fg);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:12px;padding:14px 18px;box-shadow:0 14px 44px rgba(0,0,0,.28);opacity:0;transform:translateY(-10px);transition:opacity .3s ease,transform .3s cubic-bezier(.2,.7,.3,1)}
+  #noInstPop .pop-cta{display:inline-flex;align-items:center;gap:10px;white-space:nowrap;margin-left:auto}
   #noInstPop.shown .pop-inner{opacity:1;transform:translateY(0)}
   .tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--muted);color:#fff;font-size:10px;font-weight:700;cursor:help;vertical-align:middle;margin-left:5px;line-height:1;flex:none}
   [data-theme="dark"] .tip{color:var(--bg)}
@@ -350,7 +350,8 @@ function updateNoInstPop(instances, def){
   if(!instances.length){
     if(!popBuilt){
       $('#noInstPopInner').innerHTML =
-        `<span class="pop-msg">No instances running.</span>
+        `<span class="badge stopped"><span class="dot"></span>no instances</span>
+         <span class="pop-msg">No instances running.</span>
          <span class="pop-cta">One-click start: <button class="btn" id="runDefaultBtnPop">▶ Run default instance</button></span>`;
       // Wire the button — do NOT auto-start on build. The instance only starts
       // when the user clicks. (Auto-starting here is what made `stop` impossible:

@@ -294,6 +294,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("popup: shown when no instances (class 'on')", d2.querySelector("#noInstPop").classList.contains("on"));
   check("popup: says 'No instances running' + 'One-click start'", /No instances running/.test(d2.querySelector("#noInstPop").textContent) && /One-click start/.test(d2.querySelector("#noInstPop").textContent));
   check("popup: has Run default button", !!d2.querySelector("#runDefaultBtnPop"));
+  check("popup: 'no instances' badge restored on the left", !!d2.querySelector("#noInstPop .badge") && /no instances/.test(d2.querySelector("#noInstPop .badge").textContent));
   check("popup: aria-hidden cleared while shown", d2.querySelector("#noInstPop").getAttribute("aria-hidden") === "false");
   check("inline banner hidden when nothing running", d2.querySelector("#banner").style.display === "none");
   // Regression: the pop-up must NOT auto-start the instance on load.
