@@ -21,6 +21,7 @@ function makeData(running) {
       instances: [{
         port: 18590, base_url: "http://127.0.0.1:18590", reached: true, pid: 12345,
         sources: ["pidfile"], active: "qwen-local",
+        router: { pg_current: 21.5, tg_current: 101.2, pg_avg: 22.1, tg_avg: 99.8 },
         models: [
           { name: "qwen-local", kind: "chat", external: true, port: 18501, pid: 111, active: true, running: true,
             llm: { pg_current: 21.5, tg_current: 101.2, pg_avg: 22.1, tg_avg: 99.8 } },
@@ -134,6 +135,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("model table shows current pg 21.50", /21\.50/.test(card.textContent));
   check("model table shows avg tg 99.80", /99\.80/.test(card.textContent));
   check("router metric block present", d.querySelectorAll("#instances .metric").length === 4);
+  check("task1: router rate block renders values (not —)", (()=>{ const g=card.querySelector(".grid"); return g && /101\.2/.test(g.textContent) && /22\.10/.test(g.textContent) && !/—/.test(g.textContent); })());
   check("embedding row present", /embed-local/.test(card.textContent));
   const activeBadge = d.querySelector('#instances .badge.active');
   check("task1: active badge itself carries no ? tooltip", !!activeBadge && activeBadge.querySelectorAll('.tip').length === 0);
@@ -245,14 +247,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   d.querySelector("#logsList .log-item button").click();
   await sleep(150);
   check("log viewer opened", d.querySelector("#viewer").classList.contains("on"));
+  check("task3: Auto-scroll is in the bottom bubble (.log-fab)", !!d.querySelector("#viewer .log-fab #autoScroll"));
+  check("task3: in-header 'Stop' button removed", !d.querySelector("#viewer #stopWatch"));
   check("log body has streamed line", /t\/s/.test(d.querySelector("#logbody").textContent));
   check("stream fetch called", A.calls.some((c) => c.url.includes("/api/logs/stream")));
   // toggle: after the first click the log-item button is now "Stop watching" (danger)
   const watchBtn2 = d.querySelector("#logsList .log-item button");
   check("watch toggle: button now 'Stop watching' (danger)", /Stop watching/.test(watchBtn2.textContent) && watchBtn2.classList.contains("danger"));
-  // the in-viewer Stop button closes the stream
-  d.querySelector("#stopWatch").click(); await sleep(40);
-  check("stop closes viewer", !d.querySelector("#viewer").classList.contains("on"));
+  // stopping now happens via the list's "Stop watching" button (the in-viewer Stop button was removed)
+  watchBtn2.click(); await sleep(60);
+  check("stop (via list 'Stop watching') closes viewer", !d.querySelector("#viewer").classList.contains("on"));
+
+  // task 2: the live-log watch auto-closes when its target stops (e.g. `llm-router stop`)
+  await sleep(80); // let refreshLogs() re-render the list back to "Watch" buttons
+  d.querySelector("#logsList .log-item button").click(); await sleep(120);
+  check("task2: viewer reopened for auto-close test", d.querySelector("#viewer").classList.contains("on"));
+  check("task2: watched id still in list -> watch kept", w.maybeAutoCloseWatch({ logs: [{ id: "router-18590" }] }) === false && d.querySelector("#viewer").classList.contains("on"));
+  check("task2: watched id gone (target stopped) -> watch auto-closes", w.maybeAutoCloseWatch({ logs: [] }) === true && !d.querySelector("#viewer").classList.contains("on"));
 
   // config: mode toggle to raw
   tabBtn("config").click(); await sleep(30);

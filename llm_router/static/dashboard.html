@@ -89,9 +89,13 @@
   .log-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
   .log-item .lbl{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;flex:1}
   .log-item .kind{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--chip);padding:2px 7px;border-radius:12px}
-  .viewer{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;max-height:52vh;overflow:auto;white-space:pre-wrap;word-break:break-word;display:none}
+  .viewer{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;display:none;position:relative}
   .viewer.on{display:block}
   .viewer .hd{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-family:inherit}
+  .viewer .log-scroll{max-height:48vh;overflow:auto;white-space:pre-wrap;word-break:break-word}
+  /* always-visible floating "bubble" pinned to the bottom of the log; the
+     Auto-scroll control lives inside it so it never scrolls away with the log */
+  .viewer .log-fab{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:22px;padding:4px 8px;box-shadow:0 8px 24px rgba(0,0,0,.28);z-index:5}
   .hint{color:var(--muted);font-size:12px}
   code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:12px}
   .mode-toggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -259,13 +263,13 @@ async function jsend(u, body, method){ const r=await fetch(u,{method:method||'PO
 function showStatus(el, ok, msg){ el.className='status '+(ok?'ok':'err'); el.textContent=msg; }
 
 /* ------------------------------ overview ------------------------------ */
-function metricBlock(prefix, r){
+function metricBlock(r){
   const m=(k,label)=>`<div class="metric"><div class="k">${label}</div><div class="v">${fmt(r&&r[k])}</div></div>`;
   return `<div class="grid" style="margin-bottom:6px">
-    ${m(prefix+'_pg_current','Current prompt')}
-    ${m(prefix+'_tg_current','Current gen')}
-    ${m(prefix+'_pg_avg','Avg prompt')}
-    ${m(prefix+'_tg_avg','Avg gen')}
+    ${m('pg_current','Current prompt')}
+    ${m('tg_current','Current gen')}
+    ${m('pg_avg','Avg prompt')}
+    ${m('tg_avg','Avg gen')}
   </div>`;
 }
 function statusBadge(m){
@@ -286,7 +290,7 @@ function renderInstance(inst){
     <button class="btn danger sm" data-stop="${inst.port}">■ Stop</button>
   </div>`;
   html += `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Router (instance) rate</div>`;
-  html += metricBlock('r', inst.router);
+  html += metricBlock(inst.router);
   if(inst.models.length){
     html += `<table><thead><tr>
       <th>Model</th>
@@ -400,10 +404,27 @@ function applyOverview(d){
   if(d.default && d.default.path) $('#cfgpath').textContent='Opened with config: '+d.default.path;
   updateNoInstPop(d.instances, d.default);
 }
+// Auto-close a live-log watch whose target (router or model) has stopped. The
+// /api/logs list only contains logs for still-running targets, so a watched id
+// that has vanished means its target stopped -> drop the watch (previously the
+// panel lingered until "Stop" was pressed). Returns true if the watch closed.
+function maybeAutoCloseWatch(logs){
+  if(!watchedLogId) return false;
+  if(!logs || !logs.logs.some(l=>l.id===watchedLogId)){
+    stopWatch();
+    if($('#tab-logs').classList.contains('active')) refreshLogs();
+    return true;
+  }
+  return false;
+}
 function startPolling(){
   if(pollTimer) clearInterval(pollTimer);
   pollTimer=setInterval(async ()=>{
     let d; try{ d=await jget('/api/instances'); }catch(e){ return; }
+    if(watchedLogId){
+      let logs; try{ logs=await jget('/api/logs'); }catch(e){ logs=null; }
+      maybeAutoCloseWatch(logs);
+    }
     if($('#tab-overview').classList.contains('active')) applyOverview(d);
     else updateNoInstPop(d.instances, d.default);   // keep the pop-up current even when the Overview tab is not active
   }, 5000);
@@ -685,14 +706,16 @@ async function watchLog(l){
   stopWatch();
   watchedLogId=l.id;
   const v=$('#viewer'); v.classList.add('on');
-  v.innerHTML=`<div class="hd"><strong>${l.label}</strong><span class="hint">streaming…</span>
-    <span class="spacer"></span><button class="btn danger sm" id="stopWatch">Stop</button>
-    <button class="btn ghost sm" id="autoScroll">Auto-scroll: on</button></div><div id="logbody"></div>`;
-  const body=$('#logbody'); let auto=true;
+  // The log itself scrolls inside .log-scroll; the Auto-scroll control lives in a
+  // floating .log-fab bubble pinned to the bottom so it is always visible. The old
+  // in-header "Stop" button is gone — "Stop watching" in the list handles stopping.
+  v.innerHTML=`<div class="hd"><strong>${l.label}</strong><span class="hint">streaming…</span></div>
+    <div class="log-scroll" id="logScroll"><div id="logbody"></div></div>
+    <div class="log-fab"><button class="btn ghost sm" id="autoScroll">Auto-scroll: on</button></div>`;
+  const sc=$('#logScroll'); const body=$('#logbody'); let auto=true;
   $('#autoScroll').addEventListener('click',e=>{ auto=!auto; e.target.textContent='Auto-scroll: '+(auto?'on':'off'); });
   const ctrl=new AbortController();
   watching={ctrl};
-  $('#stopWatch').addEventListener('click',()=>{ stopWatch(); refreshLogs(); });
   try{
     const r=await fetch(`/api/logs/stream?id=${l.id}&lines=200`, {signal:ctrl.signal});
     if(!r.ok) throw new Error('HTTP '+r.status);
@@ -700,7 +723,7 @@ async function watchLog(l){
     while(true){
       const {value,done}=await reader.read(); if(done) break;
       body.textContent += dec.decode(value,{stream:true});
-      if(auto) v.scrollTop=v.scrollHeight;
+      if(auto) sc.scrollTop=sc.scrollHeight;
     }
   }catch(e){
     if(e.name!=='AbortError') body.textContent += '\n[stream error: '+e.message+']';

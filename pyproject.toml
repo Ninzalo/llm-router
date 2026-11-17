@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-router"
-version = "1.2.3"
+version = "1.2.4"
 description = "OpenAI-compatible router + lifecycle manager for local LLM backends (custom OpenAI endpoint)"
 readme = "README.md"
 requires-python = ">=3.12"
